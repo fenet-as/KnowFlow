@@ -33,6 +33,14 @@ KnowFlow strictly enforces a unidirectional layered architecture:
    - Always enforce multi-tenant isolation: every query scopes data by the authenticated `owner_id`.
    - Never expose raw database errors or SQL details to callers.
 
+### Owner-Scoping Query Review Checklist (KF-11)
+Before approving or committing any new repository method or SQL query, verify:
+- [ ] **Explicit Owner Parameter:** Does the repository method take `ownerID string` as an explicit argument?
+- [ ] **WHERE Clause Scoping:** Does every `SELECT`, `UPDATE`, and `DELETE` statement include `WHERE owner_id = $x`?
+- [ ] **Parent Join Scoping:** For child tables without direct `owner_id` (e.g., `messages`), does the query `JOIN conversations` and filter by `conversations.owner_id = $x`?
+- [ ] **404 Instead of 403:** Does an attempt to read, update, or delete a resource owned by another user return `domain.ErrNotFound` (404), never 403, preventing resource existence discovery?
+- [ ] **Index Coverage:** Does the query use the tenant index (e.g. `documents_owner_created_idx`, `chunks_owner_idx`, `conversations_owner_updated_idx`)?
+
 4. **External Interfaces:**
    - External systems (Embedder, LLM, Chunker) sit behind clean Go interfaces defined in domain packages, allowing tests to run with deterministic fakes.
 

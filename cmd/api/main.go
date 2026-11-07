@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -12,6 +11,7 @@ import (
 	"time"
 
 	"github.com/fenet-as/KnowFlow/internal/config"
+	internalhttp "github.com/fenet-as/KnowFlow/internal/http"
 	"github.com/fenet-as/KnowFlow/internal/platform"
 )
 
@@ -38,23 +38,38 @@ func main() {
 		"worker_count", cfg.WorkerCount,
 	)
 
-	// Set up basic HTTP handler for server
-	mux := http.NewServeMux()
-	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_, _ = fmt.Fprintln(w, `{"status":"ok"}`)
-	})
+	// Context for database connection and initialization
+	initCtx, initCancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer initCancel()
+
+	// Initialize PostgreSQL connection pool with timeouts and pgvector types
+	poolCfg := platform.DefaultDBPoolConfig()
+	dbPool, err := platform.NewDBPool(initCtx, cfg.DatabaseURL, poolCfg)
+	if err != nil {
+		logger.Error("Database connection pool failed", "error", err)
+		os.Exit(1)
+	}
+	defer dbPool.Close()
+
+	// Validate embedding dimension against database chunks table
+	if err := platform.ValidateEmbeddingDimension(initCtx, dbPool, cfg.EmbeddingDim); err != nil {
+		logger.Error("Embedding dimension validation failed", "error", err)
+		os.Exit(1)
+	}
+	logger.Info("Database pool connected and embedding dimension validated", "dim", cfg.EmbeddingDim)
+
+	// Initialize Gin HTTP router with Request ID and Structured Access Logger middlewares
+	router := internalhttp.NewRouter(logger)
 
 	server := &http.Server{
 		Addr:         cfg.HTTPAddr,
-		Handler:      mux,
+		Handler:      router,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 10 * time.Second,
 		IdleTimeout:  60 * time.Second,
 	}
 
-	// Channel to listen for errors coming from the listener
+	// Channel to capture server runtime errors
 	serverErrors := make(chan error, 1)
 
 	// Start server in background
@@ -63,7 +78,7 @@ func main() {
 		serverErrors <- server.ListenAndServe()
 	}()
 
-	// Channel to listen for interrupt or terminate signal from the OS
+	// Channel for graceful shutdown signals
 	shutdown := make(chan os.Signal, 1)
 	signal.Notify(shutdown, os.Interrupt, syscall.SIGTERM)
 
@@ -77,11 +92,11 @@ func main() {
 	case sig := <-shutdown:
 		logger.Info("Shutdown signal received", "signal", sig.String())
 
-		// Context with timeout for graceful shutdown
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		// Graceful shutdown with 10s deadline
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
-		if err := server.Shutdown(ctx); err != nil {
+		if err := server.Shutdown(shutdownCtx); err != nil {
 			logger.Error("Graceful shutdown failed, forcing close", "error", err)
 			_ = server.Close()
 		}

@@ -1,0 +1,12 @@
+.git
+.github
+bin
+dist
+*.exe
+docs
+diagrams
+tmp
+pgdata
+web/node_modules
+web/dist
+

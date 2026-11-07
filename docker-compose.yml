@@ -1,0 +1,55 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: knowflow-postgres
+    environment:
+      POSTGRES_USER: knowflow
+      POSTGRES_PASSWORD: knowflow
+      POSTGRES_DB: knowflow
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./migrations/0001_extensions.sql:/docker-entrypoint-initdb.d/0001_extensions.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U knowflow -d knowflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 3s
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: knowflow-api
+    environment:
+      HTTP_ADDR: ":8080"
+      LOG_LEVEL: "info"
+      DATABASE_URL: "postgres://knowflow:knowflow@postgres:5432/knowflow?sslmode=disable"
+      CLERK_ISSUER: "${CLERK_ISSUER:-https://demo.clerk.accounts.dev}"
+      CLERK_AUTHORIZED_PARTIES: "${CLERK_AUTHORIZED_PARTIES:-http://localhost:5173,http://localhost:3000,http://localhost:80}"
+      GEMINI_API_KEY: "${GEMINI_API_KEY:-dev_key}"
+      CORS_ALLOWED_ORIGINS: "http://localhost:5173,http://localhost:3000,http://localhost:80"
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    container_name: knowflow-web
+    ports:
+      - "3000:80"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+

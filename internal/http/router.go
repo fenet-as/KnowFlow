@@ -6,24 +6,27 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/fenet-as/KnowFlow/internal/auth"
 	"github.com/fenet-as/KnowFlow/internal/http/middleware"
 	"github.com/fenet-as/KnowFlow/internal/platform"
 	"github.com/gin-gonic/gin"
 )
 
 // DBChecker defines the contract for testing database connectivity.
-// *pgxpool.Pool satisfies this interface.
 type DBChecker interface {
 	Ping(ctx context.Context) error
 }
 
 // RouterOptions groups dependencies needed by the HTTP router.
 type RouterOptions struct {
-	Logger    *slog.Logger
-	DBChecker DBChecker
+	Logger         *slog.Logger
+	DBChecker      DBChecker
+	CORSOrigins    []string
+	MaxUploadBytes int64
+	ClerkVerifier  *auth.ClerkVerifier
 }
 
-// NewRouter initializes the Gin engine with strict middleware ordering and operational routes.
+// NewRouter initializes the Gin engine with strict middleware ordering and route groups.
 func NewRouter(opts RouterOptions) *gin.Engine {
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
@@ -36,6 +39,18 @@ func NewRouter(opts RouterOptions) *gin.Engine {
 
 	// 3. Structured access logger using slog
 	r.Use(middleware.AccessLogger(opts.Logger))
+
+	// 4. Strict CORS allowlist from configuration
+	if len(opts.CORSOrigins) > 0 {
+		r.Use(middleware.CORS(opts.CORSOrigins))
+	}
+
+	// 5. Body limit enforcement (sized from MaxUploadBytes + overhead)
+	if opts.MaxUploadBytes > 0 {
+		// Provide 64KB overhead for multipart form boundaries and metadata
+		limitWithOverhead := opts.MaxUploadBytes + (64 * 1024)
+		r.Use(middleware.BodyLimit(limitWithOverhead, RespondWithError))
+	}
 
 	// Unauthenticated operational endpoints (KF-08)
 	r.GET("/healthz", func(c *gin.Context) {
@@ -72,6 +87,20 @@ func NewRouter(opts RouterOptions) *gin.Engine {
 
 	r.GET("/version", func(c *gin.Context) {
 		c.JSON(http.StatusOK, platform.GetVersionInfo())
+	})
+
+	// Protected business routes group (/api/v1)
+	apiV1 := r.Group("/api/v1")
+	if opts.ClerkVerifier != nil {
+		apiV1.Use(auth.Middleware(opts.ClerkVerifier, RespondWithError))
+	}
+
+	// Example protected identity verification route
+	apiV1.GET("/me", func(c *gin.Context) {
+		ownerID := auth.GetOwnerID(c.Request.Context())
+		c.JSON(http.StatusOK, gin.H{
+			"owner_id": ownerID,
+		})
 	})
 
 	return r

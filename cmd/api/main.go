@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/fenet-as/KnowFlow/internal/auth"
 	"github.com/fenet-as/KnowFlow/internal/config"
 	internalhttp "github.com/fenet-as/KnowFlow/internal/http"
 	"github.com/fenet-as/KnowFlow/internal/platform"
@@ -58,10 +59,23 @@ func main() {
 	}
 	logger.Info("Database pool connected and embedding dimension validated", "dim", cfg.EmbeddingDim)
 
-	// Initialize Gin HTTP router with Request ID, Recovery, Access Logger, and Health/Ready/Version endpoints
+	// Initialize Clerk JWT session verifier
+	clerkVerifier, err := auth.NewClerkVerifier(auth.ClerkVerifierOptions{
+		Issuer:            cfg.ClerkIssuer,
+		AuthorizedParties: cfg.ClerkAuthorizedParties,
+	})
+	if err != nil {
+		logger.Error("Failed to initialize Clerk verifier", "error", err)
+		os.Exit(1)
+	}
+
+	// Initialize Gin HTTP router with Request ID, Recovery, Access Logger, CORS, Limits, and Probes
 	router := internalhttp.NewRouter(internalhttp.RouterOptions{
-		Logger:    logger,
-		DBChecker: dbPool,
+		Logger:         logger,
+		DBChecker:      dbPool,
+		CORSOrigins:    cfg.CORSAllowedOrigins,
+		MaxUploadBytes: cfg.MaxUploadBytes,
+		ClerkVerifier:  clerkVerifier,
 	})
 
 	server := &http.Server{

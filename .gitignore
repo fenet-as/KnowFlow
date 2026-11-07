@@ -1,6 +1,7 @@
 # Documentation & Architecture (keep ignored per project requirement)
 docs/
 diagrams/
+learning/
 
 # Environment and Local Secrets
 .env

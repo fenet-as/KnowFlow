@@ -58,8 +58,11 @@ func main() {
 	}
 	logger.Info("Database pool connected and embedding dimension validated", "dim", cfg.EmbeddingDim)
 
-	// Initialize Gin HTTP router with Request ID and Structured Access Logger middlewares
-	router := internalhttp.NewRouter(logger)
+	// Initialize Gin HTTP router with Request ID, Recovery, Access Logger, and Health/Ready/Version endpoints
+	router := internalhttp.NewRouter(internalhttp.RouterOptions{
+		Logger:    logger,
+		DBChecker: dbPool,
+	})
 
 	server := &http.Server{
 		Addr:         cfg.HTTPAddr,

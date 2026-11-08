@@ -19,11 +19,12 @@ type DBChecker interface {
 
 // RouterOptions groups dependencies needed by the HTTP router.
 type RouterOptions struct {
-	Logger         *slog.Logger
-	DBChecker      DBChecker
-	CORSOrigins    []string
-	MaxUploadBytes int64
-	ClerkVerifier  *auth.ClerkVerifier
+	Logger          *slog.Logger
+	DBChecker       DBChecker
+	CORSOrigins     []string
+	MaxUploadBytes  int64
+	ClerkVerifier   *auth.ClerkVerifier
+	DocumentHandler *DocumentHandler
 }
 
 // NewRouter initializes the Gin engine with strict middleware ordering and route groups.
@@ -102,6 +103,14 @@ func NewRouter(opts RouterOptions) *gin.Engine {
 			"owner_id": ownerID,
 		})
 	})
+
+	// Document endpoints (KF-13, KF-14)
+	if opts.DocumentHandler != nil {
+		apiV1.POST("/documents", opts.DocumentHandler.Upload)
+		apiV1.GET("/documents", opts.DocumentHandler.List)
+		apiV1.GET("/documents/:id", opts.DocumentHandler.GetByID)
+		apiV1.DELETE("/documents/:id", opts.DocumentHandler.Delete)
+	}
 
 	return r
 }

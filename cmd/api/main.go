@@ -14,6 +14,8 @@ import (
 	"github.com/fenet-as/KnowFlow/internal/config"
 	internalhttp "github.com/fenet-as/KnowFlow/internal/http"
 	"github.com/fenet-as/KnowFlow/internal/platform"
+	"github.com/fenet-as/KnowFlow/internal/repo"
+	"github.com/fenet-as/KnowFlow/internal/service"
 )
 
 func main() {
@@ -69,13 +71,22 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Initialize repositories and services
+	docRepo := repo.NewPostgresDocumentRepo(dbPool)
+	docService := service.NewDocumentService(docRepo, service.DocumentServiceConfig{
+		MaxUploadBytes: cfg.MaxUploadBytes,
+		JobMaxAttempts: cfg.JobMaxAttempts,
+	})
+	docHandler := internalhttp.NewDocumentHandler(docService, cfg.MaxUploadBytes)
+
 	// Initialize Gin HTTP router with Request ID, Recovery, Access Logger, CORS, Limits, and Probes
 	router := internalhttp.NewRouter(internalhttp.RouterOptions{
-		Logger:         logger,
-		DBChecker:      dbPool,
-		CORSOrigins:    cfg.CORSAllowedOrigins,
-		MaxUploadBytes: cfg.MaxUploadBytes,
-		ClerkVerifier:  clerkVerifier,
+		Logger:          logger,
+		DBChecker:       dbPool,
+		CORSOrigins:     cfg.CORSAllowedOrigins,
+		MaxUploadBytes:  cfg.MaxUploadBytes,
+		ClerkVerifier:   clerkVerifier,
+		DocumentHandler: docHandler,
 	})
 
 	server := &http.Server{

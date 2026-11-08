@@ -63,8 +63,8 @@ export function HomePage() {
           <p>
             Multi-turn chat threads powered by vector similarity search and grounded LLM answers with citation snapshots.
           </p>
-          <Link to="/ask" className="feature-link">
-            Start Asking &rarr;
+          <Link to="/chat" className="feature-link">
+            Start Chatting &rarr;
           </Link>
         </div>
 

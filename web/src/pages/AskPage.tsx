@@ -12,11 +12,13 @@ import {
 } from 'lucide-react';
 import { AskResponse, Citation, DocumentItem, ApiError } from '../api/client';
 import { useApi } from '../api/useApi';
+import { useToast } from '../context/ToastContext';
 import { parseAnswerWithCitations } from '../lib/format';
 import { SourceViewer } from '../components/SourceViewer';
 
 export function AskPage() {
   const api = useApi();
+  const toast = useToast();
   const [question, setQuestion] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
   const [result, setResult] = useState<AskResponse | null>(null);
@@ -86,8 +88,10 @@ export function AskPage() {
           setError(err.message || 'Something went wrong. Try again.');
         }
         setErrorRequestId(err.requestId || null);
+        toast.error(err.message || 'Failed to answer');
       } else {
         setError('A network or unexpected error occurred. Please try again.');
+        toast.error('Network error. Try again.');
       }
     } finally {
       setLoading(false);

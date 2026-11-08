@@ -25,6 +25,7 @@ type RouterOptions struct {
 	MaxUploadBytes  int64
 	ClerkVerifier   *auth.ClerkVerifier
 	DocumentHandler *DocumentHandler
+	RAGHandler      *RAGHandler
 }
 
 // NewRouter initializes the Gin engine with strict middleware ordering and route groups.
@@ -110,6 +111,11 @@ func NewRouter(opts RouterOptions) *gin.Engine {
 		apiV1.GET("/documents", opts.DocumentHandler.List)
 		apiV1.GET("/documents/:id", opts.DocumentHandler.GetByID)
 		apiV1.DELETE("/documents/:id", opts.DocumentHandler.Delete)
+	}
+
+	// Stateless Ask endpoint (KF-20)
+	if opts.RAGHandler != nil {
+		apiV1.POST("/ask", opts.RAGHandler.Ask)
 	}
 
 	return r

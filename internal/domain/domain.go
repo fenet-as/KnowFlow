@@ -78,6 +78,26 @@ type Conversation struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+// Citation represents an attributed source chunk citation.
+type Citation struct {
+	Marker       int       `json:"marker"`
+	ChunkID      uuid.UUID `json:"chunk_id"`
+	DocumentID   uuid.UUID `json:"document_id"`
+	DocumentName string    `json:"document_name"`
+	Heading      *string   `json:"heading"`
+	Snippet      string    `json:"snippet"`
+}
+
+// NoRelevantContextMessage is the standardized fallback response text when no context is found.
+const NoRelevantContextMessage = "I could not find this in your documents."
+
+// Answer represents the synthesized RAG response with grounding status and citations.
+type Answer struct {
+	Answer    string     `json:"answer"`
+	Grounded  bool       `json:"grounded"`
+	Citations []Citation `json:"citations"`
+}
+
 // Message represents a user or assistant turn within a conversation.
 type Message struct {
 	ID             uuid.UUID `json:"id"`

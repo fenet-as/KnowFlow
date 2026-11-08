@@ -14,6 +14,7 @@ import (
 	"github.com/fenet-as/KnowFlow/internal/config"
 	"github.com/fenet-as/KnowFlow/internal/embed"
 	internalhttp "github.com/fenet-as/KnowFlow/internal/http"
+	"github.com/fenet-as/KnowFlow/internal/llm"
 	"github.com/fenet-as/KnowFlow/internal/platform"
 	"github.com/fenet-as/KnowFlow/internal/repo"
 	"github.com/fenet-as/KnowFlow/internal/service"
@@ -98,7 +99,20 @@ func main() {
 		TopK:     cfg.RetrievalTopK,
 		MinScore: cfg.RetrievalMinScore,
 	}, logger)
-	_ = retrievalService // Prepared for KF-20 (Stateless Ask) and KF-21 (Chunk detail)
+
+	// Initialize Gemini LLM generator and RAG service
+	geminiLLM, err := llm.NewGeminiLLM(llm.GeminiLLMConfig{
+		APIKey:  cfg.GeminiAPIKey,
+		Model:   cfg.LLMModel,
+		Timeout: cfg.AICallTimeout,
+	})
+	if err != nil {
+		logger.Error("Failed to initialize Gemini LLM", "error", err)
+		os.Exit(1)
+	}
+
+	ragService := service.NewRAGService(retrievalService, geminiLLM, logger)
+	ragHandler := internalhttp.NewRAGHandler(ragService)
 
 	// Initialize Gin HTTP router with Request ID, Recovery, Access Logger, CORS, Limits, and Probes
 	router := internalhttp.NewRouter(internalhttp.RouterOptions{
@@ -108,6 +122,7 @@ func main() {
 		MaxUploadBytes:  cfg.MaxUploadBytes,
 		ClerkVerifier:   clerkVerifier,
 		DocumentHandler: docHandler,
+		RAGHandler:      ragHandler,
 	})
 
 	server := &http.Server{

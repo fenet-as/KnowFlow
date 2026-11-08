@@ -16,9 +16,9 @@ import (
 
 // DocumentRepo defines the multi-tenant repository contract for documents.
 type DocumentRepo interface {
-	Create(ctx context.Context, doc *domain.Document) error
+	CreateWithJob(ctx context.Context, doc *domain.Document, maxAttempts int) (*domain.Job, error)
 	GetByID(ctx context.Context, ownerID string, id uuid.UUID) (*domain.Document, error)
-	List(ctx context.Context, ownerID string, limit int, cursor string) ([]*domain.Document, string, error)
+	List(ctx context.Context, ownerID string, limit int, cursorCreatedAt *time.Time, cursorID *uuid.UUID) ([]*domain.Document, error)
 	Delete(ctx context.Context, ownerID string, id uuid.UUID) error
 }
 

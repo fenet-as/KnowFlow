@@ -31,3 +31,8 @@ const FixedNoRelevantContextMessage = "I could not find this in your documents."
 type RetrievalService interface {
 	Retrieve(ctx context.Context, ownerID string, query string, documentIDs []uuid.UUID) (*RetrievalResult, error)
 }
+
+// RAGService defines the contract for end-to-end question answering with citations.
+type RAGService interface {
+	Ask(ctx context.Context, ownerID string, question string, documentIDs []uuid.UUID) (*domain.Answer, error)
+}

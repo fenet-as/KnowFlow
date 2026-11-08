@@ -10,6 +10,7 @@ import (
 
 	"github.com/fenet-as/KnowFlow/internal/auth"
 	"github.com/fenet-as/KnowFlow/internal/domain"
+	"github.com/fenet-as/KnowFlow/internal/llm"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -29,6 +30,10 @@ func (m *mockRAGService) Ask(ctx context.Context, ownerID string, question strin
 		Grounded:  true,
 		Citations: []domain.Citation{},
 	}, nil
+}
+
+func (m *mockRAGService) AskWithHistory(ctx context.Context, ownerID string, question string, documentIDs []uuid.UUID, priorTurns []llm.ConversationTurn) (*domain.Answer, error) {
+	return m.Ask(ctx, ownerID, question, documentIDs)
 }
 
 func setupTestRAGRouter(svc *mockRAGService, ownerID string) *gin.Engine {

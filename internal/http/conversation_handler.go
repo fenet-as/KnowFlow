@@ -55,6 +55,18 @@ type MessageListResponse struct {
 	NextCursor *string           `json:"next_cursor"`
 }
 
+// PostMessageRequest payload for posting a message and triggering conversational ask (KF-29).
+type PostMessageRequest struct {
+	Content     string      `json:"content"`
+	DocumentIDs []uuid.UUID `json:"document_ids"`
+}
+
+// ConversationTurnResponse DTO returned on successful conversational turn.
+type ConversationTurnResponse struct {
+	UserMessage      MessageResponse `json:"user_message"`
+	AssistantMessage MessageResponse `json:"assistant_message"`
+}
+
 // ConversationHandler exposes HTTP endpoints for chat threads and messages (KF-28).
 type ConversationHandler struct {
 	convService service.ConversationService
@@ -231,5 +243,41 @@ func (h *ConversationHandler) ListMessages(c *gin.Context) {
 	c.JSON(http.StatusOK, MessageListResponse{
 		Items:      items,
 		NextCursor: nextCursor,
+	})
+}
+
+// PostMessage handles POST /api/v1/conversations/:id/messages (KF-29).
+func (h *ConversationHandler) PostMessage(c *gin.Context) {
+	ownerID := auth.GetOwnerID(c.Request.Context())
+	if ownerID == "" {
+		RespondWithError(c, domain.NewUnauthorizedError("Authentication required."))
+		return
+	}
+
+	convID, ok := RequireUUIDParam(c, "id")
+	if !ok {
+		return
+	}
+
+	var req PostMessageRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		RespondWithError(c, domain.NewValidationError("invalid request body", err))
+		return
+	}
+
+	if req.Content == "" {
+		RespondWithError(c, domain.NewValidationError("content cannot be empty", nil))
+		return
+	}
+
+	uMsg, aMsg, err := h.convService.Ask(c.Request.Context(), ownerID, convID, req.Content, req.DocumentIDs)
+	if err != nil {
+		RespondWithError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusCreated, ConversationTurnResponse{
+		UserMessage:      toMessageResponse(uMsg),
+		AssistantMessage: toMessageResponse(aMsg),
 	})
 }

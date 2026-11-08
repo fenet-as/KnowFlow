@@ -111,7 +111,41 @@ func TestPostgresConversationRepo_Lifecycle(t *testing.T) {
 	assert.Equal(t, conv1.ID, cWithM.ID)
 	assert.Len(t, mList, 2)
 
-	// 6. Delete conversation (cascades to messages)
+	// 6. Test SaveTurn and GetRecentMessages
+	conv3 := &domain.Conversation{
+		OwnerID: ownerA,
+		Title:   "New conversation",
+	}
+	err = convRepo.Create(ctx, conv3)
+	require.NoError(t, err)
+
+	userMsg, asstMsg, err := convRepo.SaveTurn(ctx, ownerA, conv3.ID, "First question?", "First answer.", []map[string]any{{"marker": 1}}, "First question?")
+	require.NoError(t, err)
+	assert.NotEqual(t, uuid.Nil, userMsg.ID)
+	assert.Equal(t, "user", userMsg.Role)
+	assert.NotEqual(t, uuid.Nil, asstMsg.ID)
+	assert.Equal(t, "assistant", asstMsg.Role)
+
+	// Verify title was updated
+	updatedConv, err := convRepo.GetByID(ctx, ownerA, conv3.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "First question?", updatedConv.Title)
+
+	// Save a second turn
+	_, _, err = convRepo.SaveTurn(ctx, ownerA, conv3.ID, "Second question?", "Second answer.", nil, "")
+	require.NoError(t, err)
+
+	// Get recent messages (limit 2) - should return both turns oldest first
+	recent, err := convRepo.GetRecentMessages(ctx, ownerA, conv3.ID, 2)
+	require.NoError(t, err)
+	assert.Len(t, recent, 2)
+	assert.Equal(t, "Second question?", recent[0].Content)
+	assert.Equal(t, "Second answer.", recent[1].Content)
+
+	// Clean up conv3
+	_ = convRepo.Delete(ctx, ownerA, conv3.ID)
+
+	// 7. Delete conversation (cascades to messages)
 	err = convRepo.Delete(ctx, ownerA, conv1.ID)
 	require.NoError(t, err)
 

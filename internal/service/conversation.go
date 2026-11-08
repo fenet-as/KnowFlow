@@ -5,11 +5,12 @@ import (
 	"strings"
 
 	"github.com/fenet-as/KnowFlow/internal/domain"
+	"github.com/fenet-as/KnowFlow/internal/llm"
 	"github.com/fenet-as/KnowFlow/internal/repo"
 	"github.com/google/uuid"
 )
 
-// ConversationService defines the business operations for chat threads and messages (KF-28).
+// ConversationService defines the business operations for chat threads and messages (KF-28, KF-29).
 type ConversationService interface {
 	Create(ctx context.Context, ownerID string, title string) (*domain.Conversation, error)
 	GetByID(ctx context.Context, ownerID string, id uuid.UUID, messageLimit int) (*domain.Conversation, []*domain.Message, error)
@@ -17,16 +18,26 @@ type ConversationService interface {
 	Delete(ctx context.Context, ownerID string, id uuid.UUID) error
 	CreateMessage(ctx context.Context, ownerID string, convID uuid.UUID, role string, content string, citations any) (*domain.Message, error)
 	ListMessages(ctx context.Context, ownerID string, convID uuid.UUID, limit int, cursor string) ([]*domain.Message, *string, error)
+	Ask(ctx context.Context, ownerID string, convID uuid.UUID, content string, documentIDs []uuid.UUID) (*domain.Message, *domain.Message, error)
 }
 
 // DefaultConversationService implements ConversationService.
 type DefaultConversationService struct {
-	repo repo.ConversationRepo
+	repo         repo.ConversationRepo
+	ragSvc       RAGService
+	historyTurns int
 }
 
 // NewConversationService constructs a new DefaultConversationService.
-func NewConversationService(repo repo.ConversationRepo) *DefaultConversationService {
-	return &DefaultConversationService{repo: repo}
+func NewConversationService(repo repo.ConversationRepo, ragSvc RAGService, historyTurns int) *DefaultConversationService {
+	if historyTurns <= 0 {
+		historyTurns = 6
+	}
+	return &DefaultConversationService{
+		repo:         repo,
+		ragSvc:       ragSvc,
+		historyTurns: historyTurns,
+	}
 }
 
 // Create creates a new chat thread for ownerID.
@@ -194,4 +205,78 @@ func (s *DefaultConversationService) ListMessages(
 	}
 
 	return messages, nil, nil
+}
+
+// Ask performs a conversational ask (KF-29):
+// 1. Validates inputs and retrieves the target conversation.
+// 2. Fetches recent messages up to historyTurns, formatted oldest-first.
+// 3. Executes the RAG pipeline taking prior turns into account, retrieving on the latest question only.
+// 4. If the conversation has a default title, derives a new title from the first question (up to 60 chars).
+// 5. Stores both the user question and the assistant response in one atomic transaction upon success.
+func (s *DefaultConversationService) Ask(
+	ctx context.Context,
+	ownerID string,
+	convID uuid.UUID,
+	content string,
+	documentIDs []uuid.UUID,
+) (*domain.Message, *domain.Message, error) {
+	if strings.TrimSpace(ownerID) == "" {
+		return nil, nil, domain.NewUnauthorizedError("Authentication required.")
+	}
+
+	cleanContent := strings.TrimSpace(content)
+	if cleanContent == "" {
+		return nil, nil, domain.NewValidationError("message content must not be empty", nil)
+	}
+
+	// 1. Verify conversation exists and fetch its metadata
+	conv, err := s.repo.GetByID(ctx, ownerID, convID)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// 2. Retrieve recent message history
+	recentMsgs, err := s.repo.GetRecentMessages(ctx, ownerID, convID, s.historyTurns)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	priorTurns := make([]llm.ConversationTurn, 0, len(recentMsgs))
+	for _, m := range recentMsgs {
+		priorTurns = append(priorTurns, llm.ConversationTurn{
+			Role:    m.Role,
+			Content: m.Content,
+		})
+	}
+
+	// 3. Coordinate with RAG service (retrieval uses latest question only)
+	if s.ragSvc == nil {
+		return nil, nil, domain.NewInternalError("RAG service is not configured", nil)
+	}
+
+	answer, err := s.ragSvc.AskWithHistory(ctx, ownerID, cleanContent, documentIDs, priorTurns)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// 4. Derive conversation title if first question or untitled
+	var updateTitleTo string
+	if conv.Title == "New conversation" || strings.TrimSpace(conv.Title) == "" {
+		t := cleanContent
+		if len(t) > 60 {
+			t = t[:60]
+		}
+		updateTitleTo = t
+	}
+
+	// 5. Transactionally store user and assistant messages
+	return s.repo.SaveTurn(
+		ctx,
+		ownerID,
+		convID,
+		cleanContent,
+		answer.Answer,
+		answer.Citations,
+		updateTitleTo,
+	)
 }

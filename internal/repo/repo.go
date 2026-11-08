@@ -51,4 +51,6 @@ type ConversationRepo interface {
 	CreateMessage(ctx context.Context, ownerID string, msg *domain.Message) error
 	ListMessages(ctx context.Context, ownerID string, convID uuid.UUID, limit int, cursorCreatedAt *time.Time, cursorID *uuid.UUID) ([]*domain.Message, error)
 	GetWithMessages(ctx context.Context, ownerID string, id uuid.UUID, messageLimit int) (*domain.Conversation, []*domain.Message, error)
+	GetRecentMessages(ctx context.Context, ownerID string, convID uuid.UUID, limit int) ([]*domain.Message, error)
+	SaveTurn(ctx context.Context, ownerID string, convID uuid.UUID, userContent string, assistantContent string, citations any, updateTitleTo string) (*domain.Message, *domain.Message, error)
 }

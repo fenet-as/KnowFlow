@@ -29,15 +29,26 @@ func NewRAGService(retrievalSvc RetrievalService, llmClient llm.LLM, logger *slo
 	}
 }
 
-// Ask executes the stateless RAG pipeline:
-// 1. Retrieves top-k chunks with relevance gating.
-// 2. If no relevant context is found, immediately returns fixed response without calling the LLM.
-// 3. Otherwise, constructs the prompt, queries the LLM, extracts citations, and validates grounding.
+// Ask executes the stateless RAG pipeline without conversation history.
 func (s *DefaultRAGService) Ask(
 	ctx context.Context,
 	ownerID string,
 	question string,
 	documentIDs []uuid.UUID,
+) (*domain.Answer, error) {
+	return s.AskWithHistory(ctx, ownerID, question, documentIDs, nil)
+}
+
+// AskWithHistory executes the RAG pipeline taking prior turns into account:
+// 1. Retrieves top-k chunks with relevance gating using only the latest question.
+// 2. If no relevant context is found, immediately returns fixed response without calling the LLM.
+// 3. Otherwise, constructs the prompt including conversation history, queries the LLM, extracts citations, and validates grounding.
+func (s *DefaultRAGService) AskWithHistory(
+	ctx context.Context,
+	ownerID string,
+	question string,
+	documentIDs []uuid.UUID,
+	priorTurns []llm.ConversationTurn,
 ) (*domain.Answer, error) {
 	cleanOwner := strings.TrimSpace(ownerID)
 	if cleanOwner == "" {
@@ -49,7 +60,7 @@ func (s *DefaultRAGService) Ask(
 		return nil, domain.NewValidationError("Question cannot be empty.", nil)
 	}
 
-	// 1. Retrieve candidates through relevance gate
+	// 1. Retrieve candidates through relevance gate (using latest question only)
 	retrievalRes, err := s.retrievalSvc.Retrieve(ctx, cleanOwner, cleanQuestion, documentIDs)
 	if err != nil {
 		return nil, err
@@ -64,8 +75,8 @@ func (s *DefaultRAGService) Ask(
 		}, nil
 	}
 
-	// 3. Build grounded prompt
-	prompt := llm.BuildPrompt(cleanQuestion, retrievalRes.Matches, nil)
+	// 3. Build grounded prompt including dialogue history
+	prompt := llm.BuildPrompt(cleanQuestion, retrievalRes.Matches, priorTurns)
 
 	// 4. Generate answer via LLM
 	rawAnswer, err := s.llmClient.Generate(ctx, prompt)

@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/fenet-as/KnowFlow/internal/domain"
+	"github.com/fenet-as/KnowFlow/internal/platform"
+	"golang.org/x/time/rate"
 )
 
 const defaultGeminiBaseURL = "https://generativelanguage.googleapis.com"
@@ -24,6 +26,7 @@ type GeminiLLMConfig struct {
 	BaseURL    string
 	HTTPClient *http.Client
 	Timeout    time.Duration
+	Limiter    *rate.Limiter
 }
 
 // GeminiLLM implements LLM using Google Gemini's REST API.
@@ -33,6 +36,7 @@ type GeminiLLM struct {
 	baseURL    string
 	httpClient *http.Client
 	timeout    time.Duration
+	limiter    *rate.Limiter
 }
 
 // NewGeminiLLM creates an initialized GeminiLLM.
@@ -51,12 +55,13 @@ func NewGeminiLLM(cfg GeminiLLMConfig) (*GeminiLLM, error) {
 		baseURL = defaultGeminiBaseURL
 	}
 
+	timeout := cfg.Timeout
+	if timeout <= 0 {
+		timeout = 30 * time.Second
+	}
+
 	client := cfg.HTTPClient
 	if client == nil {
-		timeout := cfg.Timeout
-		if timeout <= 0 {
-			timeout = 30 * time.Second
-		}
 		client = &http.Client{Timeout: timeout}
 	}
 
@@ -65,7 +70,8 @@ func NewGeminiLLM(cfg GeminiLLMConfig) (*GeminiLLM, error) {
 		model:      model,
 		baseURL:    baseURL,
 		httpClient: client,
-		timeout:    cfg.Timeout,
+		timeout:    timeout,
+		limiter:    cfg.Limiter,
 	}, nil
 }
 
@@ -97,6 +103,20 @@ type geminiGenerateResponse struct {
 
 // Generate sends the prompt to the Gemini model and returns the generated text.
 func (g *GeminiLLM) Generate(ctx context.Context, prompt string) (string, error) {
+	timeout := g.timeout
+	if timeout <= 0 {
+		timeout = 30 * time.Second
+	}
+	callCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	// Rate limiting enforcement (KF-27)
+	if g.limiter != nil {
+		if err := g.limiter.Wait(callCtx); err != nil {
+			return "", domain.NewTransientError("Gemini generation rate limiter wait failed", err)
+		}
+	}
+
 	cleanModel := strings.TrimPrefix(g.model, "models/")
 	endpoint := fmt.Sprintf("%s/v1beta/models/%s:generateContent", g.baseURL, cleanModel)
 
@@ -119,35 +139,64 @@ func (g *GeminiLLM) Generate(ctx context.Context, prompt string) (string, error)
 		return "", domain.NewPermanentError("failed to marshal Gemini generation request", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(bodyBytes))
-	if err != nil {
-		return "", domain.NewPermanentError("failed to create Gemini generation HTTP request", err)
+	sendReq := func() (*http.Response, []byte, error) {
+		req, err := http.NewRequestWithContext(callCtx, http.MethodPost, endpoint, bytes.NewReader(bodyBytes))
+		if err != nil {
+			return nil, nil, domain.NewPermanentError("failed to create Gemini generation HTTP request", err)
+		}
+
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("x-goog-api-key", g.apiKey)
+
+		resp, err := g.httpClient.Do(req)
+		if err != nil {
+			var netErr net.Error
+			if errors.As(err, &netErr) && netErr.Timeout() {
+				return nil, nil, domain.NewTransientError("Gemini generation network timeout", err)
+			}
+			if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+				return nil, nil, domain.NewTransientError("Gemini generation context deadline exceeded", err)
+			}
+			return nil, nil, domain.NewTransientError("Gemini generation network failure", err)
+		}
+		defer resp.Body.Close()
+
+		respBytes, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, nil, domain.NewTransientError("failed to read Gemini generation response body", err)
+		}
+		return resp, respBytes, nil
 	}
 
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("x-goog-api-key", g.apiKey)
-
-	resp, err := g.httpClient.Do(req)
+	resp, respBytes, err := sendReq()
 	if err != nil {
-		var netErr net.Error
-		if errors.As(err, &netErr) && netErr.Timeout() {
-			return "", domain.NewTransientError("Gemini generation network timeout", err)
-		}
-		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
-			return "", domain.NewTransientError("Gemini generation context deadline exceeded", err)
-		}
-		return "", domain.NewTransientError("Gemini generation network failure", err)
+		return "", err
 	}
-	defer resp.Body.Close()
 
-	respBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", domain.NewTransientError("failed to read Gemini generation response body", err)
+	// Honor Retry-After on 429 or 503 (KF-27)
+	if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusServiceUnavailable {
+		retryAfter, hasRetryAfter := platform.ParseRetryAfter(resp.Header.Get("Retry-After"))
+		if hasRetryAfter && retryAfter > 0 && retryAfter <= 2*time.Second {
+			select {
+			case <-callCtx.Done():
+				return "", domain.NewTransientError("Gemini call timed out while honoring Retry-After", callCtx.Err())
+			case <-time.After(retryAfter):
+			}
+			resp, respBytes, err = sendReq()
+			if err != nil {
+				return "", err
+			}
+		}
 	}
 
 	// Classify HTTP response statuses
 	if resp.StatusCode == http.StatusTooManyRequests {
-		return "", domain.NewTransientError("Gemini generation rate limit exceeded (HTTP 429)", domain.ErrRateLimited)
+		retryAfter, hasRetryAfter := platform.ParseRetryAfter(resp.Header.Get("Retry-After"))
+		msg := "Gemini generation rate limit exceeded (HTTP 429)"
+		if hasRetryAfter {
+			msg = fmt.Sprintf("Gemini generation rate limit exceeded (HTTP 429, Retry-After: %s)", retryAfter)
+		}
+		return "", domain.NewTransientError(msg, domain.ErrRateLimited)
 	}
 	if resp.StatusCode >= http.StatusInternalServerError {
 		return "", domain.NewTransientError(

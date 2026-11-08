@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/fenet-as/KnowFlow/internal/domain"
+	"github.com/fenet-as/KnowFlow/internal/platform"
+	"golang.org/x/time/rate"
 )
 
 const (
@@ -28,6 +30,7 @@ type GeminiEmbedderConfig struct {
 	BaseURL    string
 	HTTPClient *http.Client
 	Timeout    time.Duration
+	Limiter    *rate.Limiter
 }
 
 // GeminiEmbedder generates vector embeddings using Google's Gemini REST API.
@@ -38,6 +41,7 @@ type GeminiEmbedder struct {
 	baseURL    string
 	httpClient *http.Client
 	timeout    time.Duration
+	limiter    *rate.Limiter
 }
 
 // NewGeminiEmbedder constructs a new GeminiEmbedder and validates required fields.
@@ -61,12 +65,13 @@ func NewGeminiEmbedder(cfg GeminiEmbedderConfig) (*GeminiEmbedder, error) {
 		baseURL = defaultGeminiBaseURL
 	}
 
+	timeout := cfg.Timeout
+	if timeout <= 0 {
+		timeout = 30 * time.Second
+	}
+
 	client := cfg.HTTPClient
 	if client == nil {
-		timeout := cfg.Timeout
-		if timeout <= 0 {
-			timeout = 30 * time.Second
-		}
 		client = &http.Client{Timeout: timeout}
 	}
 
@@ -76,7 +81,8 @@ func NewGeminiEmbedder(cfg GeminiEmbedderConfig) (*GeminiEmbedder, error) {
 		dimension:  dimension,
 		baseURL:    baseURL,
 		httpClient: client,
-		timeout:    cfg.Timeout,
+		timeout:    timeout,
+		limiter:    cfg.Limiter,
 	}, nil
 }
 
@@ -112,21 +118,24 @@ type geminiBatchEmbedResponse struct {
 	Embeddings []geminiEmbeddingValues `json:"embeddings"`
 }
 
-// Embed generates vector embeddings for a slice of texts with batching and dimension verification.
+// Embed generates vector embeddings for a slice of texts with batching, rate limiting, and timeout enforcement.
 func (g *GeminiEmbedder) Embed(ctx context.Context, texts []string, kind EmbedKind) ([][]float32, error) {
 	if len(texts) == 0 {
 		return [][]float32{}, nil
 	}
 
-	taskType := "RETRIEVAL_DOCUMENT"
-	if kind == EmbedKindQuery {
+	var allEmbeddings [][]float32
+
+	// TaskType mapping
+	taskType := "SEMANTIC_SIMILARITY"
+	if kind == EmbedKindDocument {
+		taskType = "RETRIEVAL_DOCUMENT"
+	} else if kind == EmbedKindQuery {
 		taskType = "RETRIEVAL_QUERY"
 	}
 
 	cleanModel := strings.TrimPrefix(g.model, "models/")
-	modelResource := "models/" + cleanModel
-
-	var allEmbeddings [][]float32
+	modelResource := fmt.Sprintf("models/%s", cleanModel)
 
 	// Process in batches up to geminiMaxBatchSize
 	for i := 0; i < len(texts); i += geminiMaxBatchSize {
@@ -161,6 +170,20 @@ func (g *GeminiEmbedder) Embed(ctx context.Context, texts []string, kind EmbedKi
 }
 
 func (g *GeminiEmbedder) executeBatch(ctx context.Context, cleanModel string, reqPayload geminiBatchEmbedRequest) ([][]float32, error) {
+	timeout := g.timeout
+	if timeout <= 0 {
+		timeout = 30 * time.Second
+	}
+	callCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	// Rate limiting enforcement (KF-27)
+	if g.limiter != nil {
+		if err := g.limiter.Wait(callCtx); err != nil {
+			return nil, domain.NewTransientError("Gemini embedding rate limiter wait failed", err)
+		}
+	}
+
 	endpoint := fmt.Sprintf("%s/v1beta/models/%s:batchEmbedContents", g.baseURL, cleanModel)
 
 	bodyBytes, err := json.Marshal(reqPayload)
@@ -168,36 +191,64 @@ func (g *GeminiEmbedder) executeBatch(ctx context.Context, cleanModel string, re
 		return nil, domain.NewPermanentError("failed to marshal Gemini embedding request", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(bodyBytes))
-	if err != nil {
-		return nil, domain.NewPermanentError("failed to create Gemini HTTP request", err)
+	sendReq := func() (*http.Response, []byte, error) {
+		req, err := http.NewRequestWithContext(callCtx, http.MethodPost, endpoint, bytes.NewReader(bodyBytes))
+		if err != nil {
+			return nil, nil, domain.NewPermanentError("failed to create Gemini HTTP request", err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("x-goog-api-key", g.apiKey)
+
+		resp, err := g.httpClient.Do(req)
+		if err != nil {
+			var netErr net.Error
+			if errors.As(err, &netErr) && netErr.Timeout() {
+				return nil, nil, domain.NewTransientError("Gemini embedding network timeout", err)
+			}
+			if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+				return nil, nil, domain.NewTransientError("Gemini embedding context canceled/deadline exceeded", err)
+			}
+			return nil, nil, domain.NewTransientError("Gemini embedding network failure", err)
+		}
+		defer resp.Body.Close()
+
+		respBytes, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, nil, domain.NewTransientError("failed to read Gemini embedding response body", err)
+		}
+		return resp, respBytes, nil
 	}
 
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("x-goog-api-key", g.apiKey)
-
-	resp, err := g.httpClient.Do(req)
+	resp, respBytes, err := sendReq()
 	if err != nil {
-		// Classify network errors / timeouts
-		var netErr net.Error
-		if errors.As(err, &netErr) && netErr.Timeout() {
-			return nil, domain.NewTransientError("Gemini embedding network timeout", err)
-		}
-		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
-			return nil, domain.NewTransientError("Gemini embedding context canceled/deadline exceeded", err)
-		}
-		return nil, domain.NewTransientError("Gemini embedding network failure", err)
+		return nil, err
 	}
-	defer resp.Body.Close()
 
-	respBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, domain.NewTransientError("failed to read Gemini embedding response body", err)
+	// Honor Retry-After on 429 or 503 (KF-27)
+	if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusServiceUnavailable {
+		retryAfter, hasRetryAfter := platform.ParseRetryAfter(resp.Header.Get("Retry-After"))
+		if hasRetryAfter && retryAfter > 0 && retryAfter <= 2*time.Second {
+			select {
+			case <-callCtx.Done():
+				return nil, domain.NewTransientError("Gemini call timed out while honoring Retry-After", callCtx.Err())
+			case <-time.After(retryAfter):
+			}
+			// Retry once
+			resp, respBytes, err = sendReq()
+			if err != nil {
+				return nil, err
+			}
+		}
 	}
 
 	// Classify HTTP response statuses
 	if resp.StatusCode == http.StatusTooManyRequests {
-		return nil, domain.NewTransientError("Gemini rate limit exceeded (HTTP 429)", domain.ErrRateLimited)
+		retryAfter, hasRetryAfter := platform.ParseRetryAfter(resp.Header.Get("Retry-After"))
+		msg := "Gemini rate limit exceeded (HTTP 429)"
+		if hasRetryAfter {
+			msg = fmt.Sprintf("Gemini rate limit exceeded (HTTP 429, Retry-After: %s)", retryAfter)
+		}
+		return nil, domain.NewTransientError(msg, domain.ErrRateLimited)
 	}
 	if resp.StatusCode >= http.StatusInternalServerError {
 		return nil, domain.NewTransientError(
@@ -205,10 +256,10 @@ func (g *GeminiEmbedder) executeBatch(ctx context.Context, cleanModel string, re
 			domain.ErrUpstreamUnavailable,
 		)
 	}
-	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+	if resp.StatusCode >= http.StatusBadRequest {
 		return nil, domain.NewPermanentError(
-			fmt.Sprintf("Gemini API rejected request (HTTP %d): %s", resp.StatusCode, string(respBytes)),
-			domain.ErrPermanent,
+			fmt.Sprintf("Gemini bad request error (HTTP %d): %s", resp.StatusCode, string(respBytes)),
+			domain.ErrValidation,
 		)
 	}
 

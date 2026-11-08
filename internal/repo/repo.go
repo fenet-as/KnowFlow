@@ -46,6 +46,9 @@ type JobRepo interface {
 type ConversationRepo interface {
 	Create(ctx context.Context, conv *domain.Conversation) error
 	GetByID(ctx context.Context, ownerID string, id uuid.UUID) (*domain.Conversation, error)
-	List(ctx context.Context, ownerID string, limit int, cursor string) ([]*domain.Conversation, string, error)
+	List(ctx context.Context, ownerID string, limit int, cursorUpdatedAt *time.Time, cursorID *uuid.UUID) ([]*domain.Conversation, error)
 	Delete(ctx context.Context, ownerID string, id uuid.UUID) error
+	CreateMessage(ctx context.Context, ownerID string, msg *domain.Message) error
+	ListMessages(ctx context.Context, ownerID string, convID uuid.UUID, limit int, cursorCreatedAt *time.Time, cursorID *uuid.UUID) ([]*domain.Message, error)
+	GetWithMessages(ctx context.Context, ownerID string, id uuid.UUID, messageLimit int) (*domain.Conversation, []*domain.Message, error)
 }

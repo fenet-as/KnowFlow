@@ -12,6 +12,7 @@ import (
 	"github.com/fenet-as/KnowFlow/internal/domain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/time/rate"
 )
 
 func TestGeminiEmbedder_Success(t *testing.T) {
@@ -234,4 +235,78 @@ func TestGeminiEmbedder_BatchingAbove100(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 2, batchCalls)
 	assert.Len(t, vecs, 150)
+}
+
+func TestGeminiEmbedder_SharedRateLimiter(t *testing.T) {
+	expectedDim := 768
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resp := geminiBatchEmbedResponse{
+			Embeddings: []geminiEmbeddingValues{{Values: make([]float32, expectedDim)}},
+		}
+		_ = json.NewEncoder(w).Encode(resp)
+	})
+
+	server := httptest.NewServer(handler)
+	defer server.Close()
+
+	// Rate limiter with 1 RPS and burst 1
+	limiter := rate.NewLimiter(rate.Every(100*time.Millisecond), 1)
+
+	embedder, err := NewGeminiEmbedder(GeminiEmbedderConfig{
+		APIKey:    "test-api-key",
+		Dimension: expectedDim,
+		BaseURL:   server.URL,
+		Limiter:   limiter,
+	})
+	require.NoError(t, err)
+
+	start := time.Now()
+	// First call consumes the burst token immediately
+	_, err = embedder.Embed(context.Background(), []string{"test 1"}, EmbedKindDocument)
+	require.NoError(t, err)
+
+	// Second call must wait ~100ms for the limiter
+	_, err = embedder.Embed(context.Background(), []string{"test 2"}, EmbedKindDocument)
+	require.NoError(t, err)
+	elapsed := time.Since(start)
+	assert.GreaterOrEqual(t, elapsed, 80*time.Millisecond, "rate limiter should pace requests")
+}
+
+func TestGeminiEmbedder_RetryAfterHonored(t *testing.T) {
+	expectedDim := 768
+	callCount := 0
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		if callCount == 1 {
+			// First call returns 429 with 1-second Retry-After
+			w.Header().Set("Retry-After", "1")
+			w.WriteHeader(http.StatusTooManyRequests)
+			_, _ = w.Write([]byte(`{"error": "rate limit exceeded"}`))
+			return
+		}
+
+		// Second call succeeds
+		resp := geminiBatchEmbedResponse{
+			Embeddings: []geminiEmbeddingValues{{Values: make([]float32, expectedDim)}},
+		}
+		_ = json.NewEncoder(w).Encode(resp)
+	})
+
+	server := httptest.NewServer(handler)
+	defer server.Close()
+
+	embedder, err := NewGeminiEmbedder(GeminiEmbedderConfig{
+		APIKey:    "test-api-key",
+		Dimension: expectedDim,
+		BaseURL:   server.URL,
+		Timeout:   5 * time.Second,
+	})
+	require.NoError(t, err)
+
+	start := time.Now()
+	vecs, err := embedder.Embed(context.Background(), []string{"retry chunk"}, EmbedKindDocument)
+	require.NoError(t, err)
+	assert.Equal(t, 2, callCount)
+	assert.Len(t, vecs, 1)
+	assert.GreaterOrEqual(t, time.Since(start), 900*time.Millisecond, "should honor 1s Retry-After")
 }

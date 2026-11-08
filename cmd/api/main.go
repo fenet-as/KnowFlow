@@ -20,6 +20,7 @@ import (
 	"github.com/fenet-as/KnowFlow/internal/repo"
 	"github.com/fenet-as/KnowFlow/internal/service"
 	"github.com/fenet-as/KnowFlow/internal/worker"
+	"golang.org/x/time/rate"
 )
 
 func main() {
@@ -79,6 +80,7 @@ func main() {
 	docRepo := repo.NewPostgresDocumentRepo(dbPool)
 	chunkRepo := repo.NewPostgresChunkRepo(dbPool)
 	jobRepo := repo.NewPostgresJobRepo(dbPool)
+	convRepo := repo.NewPostgresConversationRepo(dbPool)
 
 	docService := service.NewDocumentService(docRepo, service.DocumentServiceConfig{
 		MaxUploadBytes: cfg.MaxUploadBytes,
@@ -86,6 +88,11 @@ func main() {
 	})
 	docHandler := internalhttp.NewDocumentHandler(docService, cfg.MaxUploadBytes)
 	chunkHandler := internalhttp.NewChunkHandler(chunkRepo)
+	convService := service.NewConversationService(convRepo)
+	convHandler := internalhttp.NewConversationHandler(convService)
+
+	// Initialize shared rate limiter for AI provider calls (KF-27)
+	aiLimiter := rate.NewLimiter(rate.Limit(cfg.AIRateLimitRPS), int(cfg.AIRateLimitRPS)+1)
 
 	// Initialize Gemini embedder and retrieval service
 	geminiEmbedder, err := embed.NewGeminiEmbedder(embed.GeminiEmbedderConfig{
@@ -93,6 +100,7 @@ func main() {
 		Model:     cfg.EmbeddingModel,
 		Dimension: cfg.EmbeddingDim,
 		Timeout:   cfg.AICallTimeout,
+		Limiter:   aiLimiter,
 	})
 	if err != nil {
 		logger.Error("Failed to initialize Gemini embedder", "error", err)
@@ -109,6 +117,7 @@ func main() {
 		APIKey:  cfg.GeminiAPIKey,
 		Model:   cfg.LLMModel,
 		Timeout: cfg.AICallTimeout,
+		Limiter: aiLimiter,
 	})
 	if err != nil {
 		logger.Error("Failed to initialize Gemini LLM", "error", err)
@@ -155,9 +164,10 @@ func main() {
 		CORSOrigins:     cfg.CORSAllowedOrigins,
 		MaxUploadBytes:  cfg.MaxUploadBytes,
 		ClerkVerifier:   clerkVerifier,
-		DocumentHandler: docHandler,
-		ChunkHandler:    chunkHandler,
-		RAGHandler:      ragHandler,
+		DocumentHandler:     docHandler,
+		ChunkHandler:        chunkHandler,
+		RAGHandler:          ragHandler,
+		ConversationHandler: convHandler,
 	})
 
 	server := &http.Server{

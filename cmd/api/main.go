@@ -124,14 +124,21 @@ func main() {
 		MaxTokens:    cfg.ChunkMaxTokens,
 		OverlapPct:   cfg.ChunkOverlapPct,
 	})
-	ingestHandler := worker.NewIngestionHandler(dbPool, chunker, geminiEmbedder, jobRepo, logger)
+	ingestHandler := worker.NewIngestionHandler(dbPool, chunker, geminiEmbedder, jobRepo, logger).
+		WithRetryPolicy(worker.RetryPolicy{
+			BaseDelay:   1 * time.Second,
+			MaxDelay:    1 * time.Minute,
+			MaxAttempts: cfg.JobMaxAttempts,
+		})
 
 	workerPool := worker.NewPool(worker.PoolConfig{
-		WorkerCount:     cfg.WorkerCount,
-		PollInterval:    cfg.WorkerPollInterval,
-		JobTimeout:      cfg.JobTimeout,
-		ShutdownTimeout: 10 * time.Second,
-		Logger:          logger,
+		WorkerCount:        cfg.WorkerCount,
+		PollInterval:       cfg.WorkerPollInterval,
+		JobTimeout:         cfg.JobTimeout,
+		ShutdownTimeout:    10 * time.Second,
+		StaleCheckInterval: 30 * time.Second,
+		JobStaleAfter:      cfg.JobStaleAfter,
+		Logger:             logger,
 	}, jobRepo)
 	workerPool.RegisterHandler("ingest_document", ingestHandler)
 

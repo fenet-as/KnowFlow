@@ -31,25 +31,30 @@ func (f JobHandlerFunc) HandleJob(ctx context.Context, job *domain.Job) error {
 
 // PoolConfig holds the runtime options for background job processing.
 type PoolConfig struct {
-	WorkerCount     int
-	PollInterval    time.Duration
-	JobTimeout      time.Duration
-	ShutdownTimeout time.Duration
-	Logger          *slog.Logger
+	WorkerCount        int
+	PollInterval       time.Duration
+	JobTimeout         time.Duration
+	ShutdownTimeout    time.Duration
+	StaleCheckInterval time.Duration
+	JobStaleAfter      time.Duration
+	Logger             *slog.Logger
 }
 
 // DefaultPoolConfig returns standard defaults for the worker pool.
 func DefaultPoolConfig() PoolConfig {
 	return PoolConfig{
-		WorkerCount:     2,
-		PollInterval:    1 * time.Second,
-		JobTimeout:      5 * time.Minute,
-		ShutdownTimeout: 10 * time.Second,
-		Logger:          slog.Default(),
+		WorkerCount:        2,
+		PollInterval:       1 * time.Second,
+		JobTimeout:         5 * time.Minute,
+		ShutdownTimeout:    10 * time.Second,
+		StaleCheckInterval: 30 * time.Second,
+		JobStaleAfter:      10 * time.Minute,
+		Logger:             slog.Default(),
 	}
 }
 
-// Pool manages a pool of worker goroutines claiming and executing async jobs.
+// Pool manages a pool of worker goroutines claiming and executing async jobs,
+// along with a periodic sweeper recovering stale running jobs (KF-23, KF-26).
 type Pool struct {
 	cfg      PoolConfig
 	jobRepo  repo.JobRepo
@@ -75,6 +80,12 @@ func NewPool(cfg PoolConfig, jobRepo repo.JobRepo) *Pool {
 	if cfg.ShutdownTimeout <= 0 {
 		cfg.ShutdownTimeout = 10 * time.Second
 	}
+	if cfg.StaleCheckInterval <= 0 {
+		cfg.StaleCheckInterval = 30 * time.Second
+	}
+	if cfg.JobStaleAfter <= 0 {
+		cfg.JobStaleAfter = 10 * time.Minute
+	}
 	if cfg.Logger == nil {
 		cfg.Logger = slog.Default()
 	}
@@ -93,7 +104,7 @@ func (p *Pool) RegisterHandler(jobType string, handler JobHandler) {
 	p.handlers[jobType] = handler
 }
 
-// Start launches the configured worker goroutines.
+// Start launches the configured worker goroutines and the periodic stale job recovery sweeper.
 func (p *Pool) Start(ctx context.Context) error {
 	if !p.running.CompareAndSwap(false, true) {
 		return errors.New("worker pool is already running")
@@ -106,14 +117,21 @@ func (p *Pool) Start(ctx context.Context) error {
 	p.cfg.Logger.Info("Starting worker pool",
 		"worker_count", p.cfg.WorkerCount,
 		"poll_interval", p.cfg.PollInterval,
+		"stale_check_interval", p.cfg.StaleCheckInterval,
+		"job_stale_after", p.cfg.JobStaleAfter,
 		"instance_id", instanceID,
 	)
 
+	// Launch worker goroutines
 	for i := 0; i < p.cfg.WorkerCount; i++ {
 		workerID := fmt.Sprintf("worker-%d-%s", i, instanceID)
 		p.wg.Add(1)
 		go p.workerLoop(runCtx, workerID)
 	}
+
+	// Launch background stale job recovery sweeper (KF-26)
+	p.wg.Add(1)
+	go p.staleSweeperLoop(runCtx)
 
 	return nil
 }
@@ -145,6 +163,31 @@ func (p *Pool) workerLoop(ctx context.Context, workerID string) {
 		}
 
 		p.processJob(ctx, workerID, job)
+	}
+}
+
+// staleSweeperLoop periodically recovers stale running jobs whose heartbeat has timed out (KF-26).
+func (p *Pool) staleSweeperLoop(ctx context.Context) {
+	defer p.wg.Done()
+
+	ticker := time.NewTicker(p.cfg.StaleCheckInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			recovered, err := p.jobRepo.RecoverStale(ctx, p.cfg.JobStaleAfter)
+			if err != nil && !errors.Is(err, context.Canceled) {
+				p.cfg.Logger.Error("Stale job sweeper error", "error", err)
+			} else if recovered > 0 {
+				p.cfg.Logger.Info("Recovered stale running jobs back to queued",
+					"count", recovered,
+					"stale_after", p.cfg.JobStaleAfter,
+				)
+			}
+		}
 	}
 }
 
@@ -200,10 +243,10 @@ func (p *Pool) sleepJittered(ctx context.Context, base time.Duration) {
 		base = 500 * time.Millisecond
 	}
 	// Jitter: 0 to 25% of base interval
-	jitterMax := int64(base / 4)
+	jitterMagnitude := int64(base / 4)
 	var jitter time.Duration
-	if jitterMax > 0 {
-		jitter = time.Duration(rand.Int63n(jitterMax))
+	if jitterMagnitude > 0 {
+		jitter = time.Duration(rand.Int63n(jitterMagnitude))
 	}
 
 	timer := time.NewTimer(base + jitter)
@@ -224,7 +267,7 @@ func (p *Pool) Shutdown(ctx context.Context) error {
 
 	p.cfg.Logger.Info("Stopping worker pool, waiting for in-flight jobs to complete")
 
-	// Cancel context to stop workers from claiming new jobs
+	// Cancel context to stop workers and sweeper
 	if p.cancel != nil {
 		p.cancel()
 	}

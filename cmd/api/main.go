@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/fenet-as/KnowFlow/internal/auth"
+	"github.com/fenet-as/KnowFlow/internal/chunk"
 	"github.com/fenet-as/KnowFlow/internal/config"
 	"github.com/fenet-as/KnowFlow/internal/embed"
 	internalhttp "github.com/fenet-as/KnowFlow/internal/http"
@@ -18,6 +19,7 @@ import (
 	"github.com/fenet-as/KnowFlow/internal/platform"
 	"github.com/fenet-as/KnowFlow/internal/repo"
 	"github.com/fenet-as/KnowFlow/internal/service"
+	"github.com/fenet-as/KnowFlow/internal/worker"
 )
 
 func main() {
@@ -76,6 +78,7 @@ func main() {
 	// Initialize repositories and services
 	docRepo := repo.NewPostgresDocumentRepo(dbPool)
 	chunkRepo := repo.NewPostgresChunkRepo(dbPool)
+	jobRepo := repo.NewPostgresJobRepo(dbPool)
 
 	docService := service.NewDocumentService(docRepo, service.DocumentServiceConfig{
 		MaxUploadBytes: cfg.MaxUploadBytes,
@@ -114,6 +117,29 @@ func main() {
 
 	ragService := service.NewRAGService(retrievalService, geminiLLM, logger)
 	ragHandler := internalhttp.NewRAGHandler(ragService)
+
+	// Initialize background worker pool and ingestion job handler (KF-23, KF-24)
+	chunker := chunk.NewMarkdownChunker(chunk.ChunkerOptions{
+		TargetTokens: cfg.ChunkTargetTokens,
+		MaxTokens:    cfg.ChunkMaxTokens,
+		OverlapPct:   cfg.ChunkOverlapPct,
+	})
+	ingestHandler := worker.NewIngestionHandler(dbPool, chunker, geminiEmbedder, jobRepo, logger)
+
+	workerPool := worker.NewPool(worker.PoolConfig{
+		WorkerCount:     cfg.WorkerCount,
+		PollInterval:    cfg.WorkerPollInterval,
+		JobTimeout:      cfg.JobTimeout,
+		ShutdownTimeout: 10 * time.Second,
+		Logger:          logger,
+	}, jobRepo)
+	workerPool.RegisterHandler("ingest_document", ingestHandler)
+
+	if err := workerPool.Start(context.Background()); err != nil {
+		logger.Error("Failed to start background worker pool", "error", err)
+		os.Exit(1)
+	}
+	defer workerPool.Stop()
 
 	// Initialize Gin HTTP router with Request ID, Recovery, Access Logger, CORS, Limits, and Probes
 	router := internalhttp.NewRouter(internalhttp.RouterOptions{
@@ -166,6 +192,10 @@ func main() {
 			logger.Error("Graceful shutdown failed, forcing close", "error", err)
 			_ = server.Close()
 		}
-		logger.Info("Server stopped cleanly")
+
+		if err := workerPool.Shutdown(shutdownCtx); err != nil {
+			logger.Error("Worker pool shutdown deadline exceeded", "error", err)
+		}
+		logger.Info("Server and background worker pool stopped cleanly")
 	}
 }

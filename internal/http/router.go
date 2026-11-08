@@ -25,6 +25,7 @@ type RouterOptions struct {
 	MaxUploadBytes  int64
 	ClerkVerifier   *auth.ClerkVerifier
 	DocumentHandler *DocumentHandler
+	ChunkHandler    *ChunkHandler
 	RAGHandler      *RAGHandler
 }
 
@@ -111,6 +112,11 @@ func NewRouter(opts RouterOptions) *gin.Engine {
 		apiV1.GET("/documents", opts.DocumentHandler.List)
 		apiV1.GET("/documents/:id", opts.DocumentHandler.GetByID)
 		apiV1.DELETE("/documents/:id", opts.DocumentHandler.Delete)
+	}
+
+	// Chunk endpoints (KF-21)
+	if opts.ChunkHandler != nil {
+		apiV1.GET("/chunks/:id", opts.ChunkHandler.GetByID)
 	}
 
 	// Stateless Ask endpoint (KF-20)

@@ -6,6 +6,7 @@ import (
 
 	"github.com/fenet-as/KnowFlow/internal/domain"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 // Owner-scoping convention rules (KF-11):
@@ -32,10 +33,13 @@ type ChunkRepo interface {
 
 // JobRepo defines the repository contract for the transactional async queue.
 type JobRepo interface {
-	Enqueue(ctx context.Context, documentID uuid.UUID) error
+	Enqueue(ctx context.Context, tx pgx.Tx, documentID uuid.UUID, maxAttempts int) (*domain.Job, error)
+	Claim(ctx context.Context, workerID string) (*domain.Job, error)
 	Complete(ctx context.Context, jobID uuid.UUID) error
+	RetryLater(ctx context.Context, jobID uuid.UUID, delay time.Duration, lastError string) error
 	Fail(ctx context.Context, jobID uuid.UUID, lastError string) error
-	RetryLater(ctx context.Context, jobID uuid.UUID, runAfter time.Time, lastError string) error
+	RecoverStale(ctx context.Context, staleDuration time.Duration) (int64, error)
+	GetByID(ctx context.Context, id uuid.UUID) (*domain.Job, error)
 }
 
 // ConversationRepo defines the multi-tenant repository contract for chat threads and turns.

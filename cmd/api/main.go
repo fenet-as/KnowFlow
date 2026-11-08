@@ -82,6 +82,7 @@ func main() {
 		JobMaxAttempts: cfg.JobMaxAttempts,
 	})
 	docHandler := internalhttp.NewDocumentHandler(docService, cfg.MaxUploadBytes)
+	chunkHandler := internalhttp.NewChunkHandler(chunkRepo)
 
 	// Initialize Gemini embedder and retrieval service
 	geminiEmbedder, err := embed.NewGeminiEmbedder(embed.GeminiEmbedderConfig{
@@ -122,6 +123,7 @@ func main() {
 		MaxUploadBytes:  cfg.MaxUploadBytes,
 		ClerkVerifier:   clerkVerifier,
 		DocumentHandler: docHandler,
+		ChunkHandler:    chunkHandler,
 		RAGHandler:      ragHandler,
 	})
 

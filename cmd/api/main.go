@@ -173,11 +173,13 @@ func main() {
 	})
 
 	server := &http.Server{
-		Addr:         cfg.HTTPAddr,
-		Handler:      router,
-		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 10 * time.Second,
-		IdleTimeout:  60 * time.Second,
+		Addr:              cfg.HTTPAddr,
+		Handler:           router,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      15 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    1 << 20, // 1 MB
 	}
 
 	// Channel to capture server runtime errors
@@ -203,17 +205,23 @@ func main() {
 	case sig := <-shutdown:
 		logger.Info("Shutdown signal received", "signal", sig.String())
 
-		// Graceful shutdown with 10s deadline
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		// Graceful shutdown with 15s deadline
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
 
+		// 1. Stop accepting new HTTP requests and wait for in-flight requests to complete
 		if err := server.Shutdown(shutdownCtx); err != nil {
-			logger.Error("Graceful shutdown failed, forcing close", "error", err)
+			logger.Error("Graceful HTTP shutdown failed, forcing close", "error", err)
 			_ = server.Close()
+		} else {
+			logger.Info("HTTP server closed cleanly, in-flight requests drained")
 		}
 
+		// 2. Stop worker pool and wait for in-flight jobs to complete within remaining deadline
 		if err := workerPool.Shutdown(shutdownCtx); err != nil {
 			logger.Error("Worker pool shutdown deadline exceeded", "error", err)
+		} else {
+			logger.Info("Background worker pool stopped cleanly")
 		}
 		logger.Info("Server and background worker pool stopped cleanly")
 	}

@@ -1,4 +1,4 @@
-.PHONY: all build run test test-integration test-coverage vet lint migrate migrate-up migrate-down migrate-status migrate-reset up down
+.PHONY: all build run test test-integration test-coverage vet lint migrate migrate-up migrate-down migrate-status migrate-reset benchmark eval up down
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "none")
@@ -47,6 +47,12 @@ migrate-status:
 
 migrate-reset:
 	go run ./cmd/migrate -db "$(DATABASE_URL)" -dir "$(MIGRATIONS_DIR)" reset
+
+benchmark:
+	go run ./cmd/benchmark -db "$(DATABASE_URL)"
+
+eval:
+	go run ./cmd/eval -corpus "demo/corpus" -k 6 -threshold 0.65
 
 up:
 	docker compose up -d

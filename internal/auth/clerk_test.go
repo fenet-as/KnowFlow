@@ -168,6 +168,53 @@ func TestClerkMiddleware(t *testing.T) {
 		}
 	})
 
+	t.Run("invalid header format returns 401", func(t *testing.T) {
+		req, _ := http.NewRequest(http.MethodGet, "/protected", nil)
+		req.Header.Set("Authorization", "Basic username:password")
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+
+		if w.Code != http.StatusUnauthorized {
+			t.Errorf("expected 401, got %d", w.Code)
+		}
+	})
+
+	t.Run("empty bearer token returns 401", func(t *testing.T) {
+		req, _ := http.NewRequest(http.MethodGet, "/protected", nil)
+		req.Header.Set("Authorization", "Bearer ")
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+
+		if w.Code != http.StatusUnauthorized {
+			t.Errorf("expected 401, got %d", w.Code)
+		}
+	})
+
+	t.Run("expired bearer token returns 401", func(t *testing.T) {
+		expiredToken := createTestToken(t, key, kid, issuer, "user_expired", "", time.Now().Add(-1*time.Hour))
+		req, _ := http.NewRequest(http.MethodGet, "/protected", nil)
+		req.Header.Set("Authorization", "Bearer "+expiredToken)
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+
+		if w.Code != http.StatusUnauthorized {
+			t.Errorf("expected 401, got %d", w.Code)
+		}
+	})
+
+	t.Run("token with invalid signature returns 401", func(t *testing.T) {
+		wrongKey := generateTestRSAKey(t)
+		invalidToken := createTestToken(t, wrongKey, kid, issuer, "user_impostor", "", time.Now().Add(1*time.Hour))
+		req, _ := http.NewRequest(http.MethodGet, "/protected", nil)
+		req.Header.Set("Authorization", "Bearer "+invalidToken)
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+
+		if w.Code != http.StatusUnauthorized {
+			t.Errorf("expected 401, got %d", w.Code)
+		}
+	})
+
 	t.Run("valid bearer token sets owner ID", func(t *testing.T) {
 		tokenStr := createTestToken(t, key, kid, issuer, "user_owner_42", "", time.Now().Add(1*time.Hour))
 		req, _ := http.NewRequest(http.MethodGet, "/protected", nil)

@@ -10,6 +10,20 @@ jobs:
   backend:
     name: Backend Lint, Vet & Test
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: knowflow
+          POSTGRES_PASSWORD: knowflow
+          POSTGRES_DB: knowflow
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -35,8 +49,10 @@ jobs:
           args: --timeout=5m
         continue-on-error: true
 
-      - name: Run Unit Tests
-        run: go test -v ./...
+      - name: Run Tests with Coverage
+        env:
+          DATABASE_URL: "postgres://knowflow:knowflow@localhost:5432/knowflow?sslmode=disable"
+        run: go test -v -p 1 -cover ./...
 
       - name: Build All Packages
         run: go build -v ./...

@@ -1,4 +1,4 @@
-.PHONY: all build run test vet lint migrate migrate-down migrate-status migrate-reset up down
+.PHONY: all build run test test-integration test-coverage vet lint migrate migrate-up migrate-down migrate-status migrate-reset up down
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "none")
@@ -20,7 +20,13 @@ run:
 	go run -ldflags="$(LDFLAGS)" ./cmd/api
 
 test:
-	go test -v ./...
+	go test -v -p 1 -cover ./...
+
+test-integration:
+	go test -v -p 1 ./test/integration/...
+
+test-coverage:
+	go test -v -p 1 -coverprofile=coverage.out ./... && go tool cover -func=coverage.out
 
 vet:
 	go vet ./...
@@ -30,6 +36,8 @@ lint:
 
 migrate:
 	go run ./cmd/migrate -db "$(DATABASE_URL)" -dir "$(MIGRATIONS_DIR)" up
+
+migrate-up: migrate
 
 migrate-down:
 	go run ./cmd/migrate -db "$(DATABASE_URL)" -dir "$(MIGRATIONS_DIR)" down

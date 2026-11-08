@@ -12,6 +12,7 @@ import (
 
 	"github.com/fenet-as/KnowFlow/internal/auth"
 	"github.com/fenet-as/KnowFlow/internal/config"
+	"github.com/fenet-as/KnowFlow/internal/embed"
 	internalhttp "github.com/fenet-as/KnowFlow/internal/http"
 	"github.com/fenet-as/KnowFlow/internal/platform"
 	"github.com/fenet-as/KnowFlow/internal/repo"
@@ -73,11 +74,31 @@ func main() {
 
 	// Initialize repositories and services
 	docRepo := repo.NewPostgresDocumentRepo(dbPool)
+	chunkRepo := repo.NewPostgresChunkRepo(dbPool)
+
 	docService := service.NewDocumentService(docRepo, service.DocumentServiceConfig{
 		MaxUploadBytes: cfg.MaxUploadBytes,
 		JobMaxAttempts: cfg.JobMaxAttempts,
 	})
 	docHandler := internalhttp.NewDocumentHandler(docService, cfg.MaxUploadBytes)
+
+	// Initialize Gemini embedder and retrieval service
+	geminiEmbedder, err := embed.NewGeminiEmbedder(embed.GeminiEmbedderConfig{
+		APIKey:    cfg.GeminiAPIKey,
+		Model:     cfg.EmbeddingModel,
+		Dimension: cfg.EmbeddingDim,
+		Timeout:   cfg.AICallTimeout,
+	})
+	if err != nil {
+		logger.Error("Failed to initialize Gemini embedder", "error", err)
+		os.Exit(1)
+	}
+
+	retrievalService := service.NewRetrievalService(geminiEmbedder, chunkRepo, service.RetrievalConfig{
+		TopK:     cfg.RetrievalTopK,
+		MinScore: cfg.RetrievalMinScore,
+	}, logger)
+	_ = retrievalService // Prepared for KF-20 (Stateless Ask) and KF-21 (Chunk detail)
 
 	// Initialize Gin HTTP router with Request ID, Recovery, Access Logger, CORS, Limits, and Probes
 	router := internalhttp.NewRouter(internalhttp.RouterOptions{

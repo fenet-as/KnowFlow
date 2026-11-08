@@ -34,6 +34,26 @@ type Chunk struct {
 	CreatedAt   time.Time  `json:"created_at"`
 }
 
+// ChunkMatch represents a retrieved chunk with its source document name and similarity score.
+type ChunkMatch struct {
+	ID           uuid.UUID `json:"id"`
+	DocumentID   uuid.UUID `json:"document_id"`
+	DocumentName string    `json:"document_name"`
+	Heading      *string   `json:"heading"`
+	Content      string    `json:"content"`
+	Score        float64   `json:"score"`
+}
+
+// ChunkDetail represents the full details of a chunk for source inspection.
+type ChunkDetail struct {
+	ID           uuid.UUID `json:"id"`
+	DocumentID   uuid.UUID `json:"document_id"`
+	DocumentName string    `json:"document_name"`
+	ChunkIndex   int       `json:"chunk_index"`
+	Heading      *string   `json:"heading"`
+	Content      string    `json:"content"`
+}
+
 // Job represents an asynchronous background task.
 type Job struct {
 	ID          uuid.UUID  `json:"id"`

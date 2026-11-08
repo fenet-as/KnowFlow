@@ -24,9 +24,10 @@ type DocumentRepo interface {
 
 // ChunkRepo defines the multi-tenant repository contract for chunk storage and vector retrieval.
 type ChunkRepo interface {
-	BulkInsert(ctx context.Context, chunks []domain.Chunk) error
+	BulkInsert(ctx context.Context, chunks []*domain.Chunk) error
 	DeleteByDocument(ctx context.Context, ownerID string, documentID uuid.UUID) error
-	GetByID(ctx context.Context, ownerID string, id uuid.UUID) (*domain.Chunk, error)
+	GetByID(ctx context.Context, ownerID string, id uuid.UUID) (*domain.ChunkDetail, error)
+	SimilaritySearch(ctx context.Context, ownerID string, embedding []float32, documentIDs []uuid.UUID, limit int) ([]domain.ChunkMatch, error)
 }
 
 // JobRepo defines the repository contract for the transactional async queue.

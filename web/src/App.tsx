@@ -1,11 +1,51 @@
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { ClerkProvider } from '@clerk/clerk-react';
+import { Layout } from './components/Layout';
+import { HomePage } from './pages/HomePage';
+import { DocumentsPage } from './pages/DocumentsPage';
+import { AskPage } from './pages/AskPage';
+import { SignInPage, SignUpPage } from './pages/AuthPages';
+
+const clerkPublishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+
 export default function App() {
+  if (!clerkPublishableKey) {
+    return (
+      <BrowserRouter>
+        <div className="dev-banner-container">
+          <div className="dev-banner">
+            <h2>Clerk Publishable Key Required</h2>
+            <p>
+              Please define <code>VITE_CLERK_PUBLISHABLE_KEY</code> in your environment (e.g. in <code>web/.env</code>) to enable Clerk authentication.
+            </p>
+          </div>
+          <Routes>
+            <Route path="/" element={<Layout />}>
+              <Route index element={<HomePage />} />
+              <Route path="documents" element={<DocumentsPage />} />
+              <Route path="ask" element={<AskPage />} />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Route>
+          </Routes>
+        </div>
+      </BrowserRouter>
+    );
+  }
+
   return (
-    <div style={{ padding: '2rem', maxWidth: '800px', margin: '0 auto' }}>
-      <h1>KnowFlow</h1>
-      <p>AI Document-to-Action & Question-Answering Engine</p>
-      <div style={{ padding: '1rem', background: '#e0f2fe', borderRadius: '8px', color: '#0369a1' }}>
-        <strong>Frontend Scaffold Ready:</strong> Connected to KnowFlow API stack.
-      </div>
-    </div>
+    <ClerkProvider publishableKey={clerkPublishableKey}>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<Layout />}>
+            <Route index element={<HomePage />} />
+            <Route path="documents" element={<DocumentsPage />} />
+            <Route path="ask" element={<AskPage />} />
+            <Route path="sign-in/*" element={<SignInPage />} />
+            <Route path="sign-up/*" element={<SignUpPage />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Route>
+        </Routes>
+      </BrowserRouter>
+    </ClerkProvider>
   );
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/fenet-as/KnowFlow/internal/domain"
+	"github.com/fenet-as/KnowFlow/internal/llm"
 	"github.com/google/uuid"
 )
 
@@ -35,4 +36,5 @@ type RetrievalService interface {
 // RAGService defines the contract for end-to-end question answering with citations.
 type RAGService interface {
 	Ask(ctx context.Context, ownerID string, question string, documentIDs []uuid.UUID) (*domain.Answer, error)
+	AskWithHistory(ctx context.Context, ownerID string, question string, documentIDs []uuid.UUID, priorTurns []llm.ConversationTurn) (*domain.Answer, error)
 }

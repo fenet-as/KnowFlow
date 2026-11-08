@@ -88,8 +88,6 @@ func main() {
 	})
 	docHandler := internalhttp.NewDocumentHandler(docService, cfg.MaxUploadBytes)
 	chunkHandler := internalhttp.NewChunkHandler(chunkRepo)
-	convService := service.NewConversationService(convRepo)
-	convHandler := internalhttp.NewConversationHandler(convService)
 
 	// Initialize shared rate limiter for AI provider calls (KF-27)
 	aiLimiter := rate.NewLimiter(rate.Limit(cfg.AIRateLimitRPS), int(cfg.AIRateLimitRPS)+1)
@@ -126,6 +124,10 @@ func main() {
 
 	ragService := service.NewRAGService(retrievalService, geminiLLM, logger)
 	ragHandler := internalhttp.NewRAGHandler(ragService)
+
+	// Initialize conversation service and handler (KF-28, KF-29)
+	convService := service.NewConversationService(convRepo, ragService, cfg.HistoryTurns)
+	convHandler := internalhttp.NewConversationHandler(convService)
 
 	// Initialize background worker pool and ingestion job handler (KF-23, KF-24)
 	chunker := chunk.NewMarkdownChunker(chunk.ChunkerOptions{

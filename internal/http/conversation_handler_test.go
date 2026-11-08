@@ -24,6 +24,7 @@ type mockConversationService struct {
 	deleteFn       func(ctx context.Context, ownerID string, id uuid.UUID) error
 	createMsgFn    func(ctx context.Context, ownerID string, convID uuid.UUID, role string, content string, citations any) (*domain.Message, error)
 	listMessagesFn func(ctx context.Context, ownerID string, convID uuid.UUID, limit int, cursor string) ([]*domain.Message, *string, error)
+	askFn          func(ctx context.Context, ownerID string, convID uuid.UUID, content string, documentIDs []uuid.UUID) (*domain.Message, *domain.Message, error)
 }
 
 func (m *mockConversationService) Create(ctx context.Context, ownerID string, title string) (*domain.Conversation, error) {
@@ -68,6 +69,13 @@ func (m *mockConversationService) ListMessages(ctx context.Context, ownerID stri
 	return nil, nil, nil
 }
 
+func (m *mockConversationService) Ask(ctx context.Context, ownerID string, convID uuid.UUID, content string, documentIDs []uuid.UUID) (*domain.Message, *domain.Message, error) {
+	if m.askFn != nil {
+		return m.askFn(ctx, ownerID, convID, content, documentIDs)
+	}
+	return nil, nil, nil
+}
+
 func setupTestConversationRouter(svc *mockConversationService, ownerID string) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
@@ -89,6 +97,7 @@ func setupTestConversationRouter(svc *mockConversationService, ownerID string) *
 		api.GET("/conversations/:id", handler.GetByID)
 		api.DELETE("/conversations/:id", handler.Delete)
 		api.GET("/conversations/:id/messages", handler.ListMessages)
+		api.POST("/conversations/:id/messages", handler.PostMessage)
 	}
 
 	return r
@@ -333,5 +342,117 @@ func TestConversationHandler_ListMessages(t *testing.T) {
 		assert.Len(t, resp.Items, 1)
 		assert.Equal(t, msgID, resp.Items[0].ID)
 		assert.Equal(t, "assistant", resp.Items[0].Role)
+	})
+}
+
+func TestConversationHandler_PostMessage(t *testing.T) {
+	convID := uuid.New()
+	uMsgID := uuid.New()
+	aMsgID := uuid.New()
+	now := time.Now().UTC()
+
+	t.Run("successful conversational turn returns 201 Created", func(t *testing.T) {
+		svc := &mockConversationService{
+			askFn: func(ctx context.Context, ownerID string, cID uuid.UUID, content string, documentIDs []uuid.UUID) (*domain.Message, *domain.Message, error) {
+				assert.Equal(t, "user_123", ownerID)
+				assert.Equal(t, convID, cID)
+				assert.Equal(t, "What is our vacation policy?", content)
+				return &domain.Message{
+						ID:             uMsgID,
+						ConversationID: convID,
+						Role:           "user",
+						Content:        content,
+						Citations:      []any{},
+						CreatedAt:      now,
+					}, &domain.Message{
+						ID:             aMsgID,
+						ConversationID: convID,
+						Role:           "assistant",
+						Content:        "You get 20 days off [1].",
+						Citations:      []any{map[string]any{"marker": 1}},
+						CreatedAt:      now,
+					}, nil
+			},
+		}
+
+		r := setupTestConversationRouter(svc, "user_123")
+		body := `{"content": "What is our vacation policy?"}`
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+convID.String()+"/messages", bytes.NewBufferString(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		r.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusCreated, w.Code)
+		var resp ConversationTurnResponse
+		err := json.Unmarshal(w.Body.Bytes(), &resp)
+		require.NoError(t, err)
+		assert.Equal(t, uMsgID, resp.UserMessage.ID)
+		assert.Equal(t, "user", resp.UserMessage.Role)
+		assert.Equal(t, aMsgID, resp.AssistantMessage.ID)
+		assert.Equal(t, "assistant", resp.AssistantMessage.Role)
+		assert.Equal(t, "You get 20 days off [1].", resp.AssistantMessage.Content)
+	})
+
+	t.Run("empty content returns 400 Bad Request", func(t *testing.T) {
+		svc := &mockConversationService{}
+		r := setupTestConversationRouter(svc, "user_123")
+		body := `{"content": ""}`
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+convID.String()+"/messages", bytes.NewBufferString(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		r.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+	})
+
+	t.Run("conversation not found returns 404", func(t *testing.T) {
+		svc := &mockConversationService{
+			askFn: func(ctx context.Context, ownerID string, cID uuid.UUID, content string, documentIDs []uuid.UUID) (*domain.Message, *domain.Message, error) {
+				return nil, nil, domain.NewNotFoundError("Conversation not found.")
+			},
+		}
+
+		r := setupTestConversationRouter(svc, "user_123")
+		body := `{"content": "Valid question"}`
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+convID.String()+"/messages", bytes.NewBufferString(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		r.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusNotFound, w.Code)
+	})
+
+	t.Run("unauthenticated returns 401", func(t *testing.T) {
+		svc := &mockConversationService{}
+		r := setupTestConversationRouter(svc, "") // no auth
+		body := `{"content": "Valid question"}`
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+convID.String()+"/messages", bytes.NewBufferString(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		r.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusUnauthorized, w.Code)
+	})
+
+	t.Run("upstream LLM failure returns 503 Service Unavailable", func(t *testing.T) {
+		svc := &mockConversationService{
+			askFn: func(ctx context.Context, ownerID string, cID uuid.UUID, content string, documentIDs []uuid.UUID) (*domain.Message, *domain.Message, error) {
+				return nil, nil, domain.NewTransientError("LLM unavailable", domain.ErrUpstreamUnavailable)
+			},
+		}
+
+		r := setupTestConversationRouter(svc, "user_123")
+		body := `{"content": "Valid question"}`
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+convID.String()+"/messages", bytes.NewBufferString(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		r.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusServiceUnavailable, w.Code)
 	})
 }

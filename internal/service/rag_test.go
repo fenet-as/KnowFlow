@@ -136,4 +136,30 @@ func TestRAGService_Ask(t *testing.T) {
 		assert.Error(t, err)
 		assert.True(t, domain.IsTransient(err))
 	})
+
+	t.Run("AskWithHistory passes prior turns to prompt", func(t *testing.T) {
+		mockRetrieval := &mockRetrievalService{
+			retrieveFn: func(ctx context.Context, ownerID string, query string, documentIDs []uuid.UUID) (*RetrievalResult, error) {
+				return &RetrievalResult{
+					HasRelevantContext: true,
+					Matches:            matches,
+					TopScore:           0.89,
+					Query:              query,
+				}, nil
+			},
+		}
+
+		fakeLLM := llm.NewFakeLLM("Yes, as mentioned before [1].")
+		ragSvc := NewRAGService(mockRetrieval, fakeLLM, nil)
+
+		priorTurns := []llm.ConversationTurn{
+			{Role: "user", Content: "Do we get time off?"},
+			{Role: "assistant", Content: "Yes, 15 days."},
+		}
+
+		ans, err := ragSvc.AskWithHistory(ctx, ownerID, "Can you confirm?", nil, priorTurns)
+		require.NoError(t, err)
+		assert.True(t, ans.Grounded)
+		assert.Len(t, ans.Citations, 1)
+	})
 }

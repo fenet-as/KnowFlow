@@ -277,3 +277,166 @@ func (r *PostgresConversationRepo) GetWithMessages(
 
 	return conv, messages, nil
 }
+
+// GetRecentMessages retrieves the most recent `limit` messages in a conversation, returned oldest first.
+func (r *PostgresConversationRepo) GetRecentMessages(
+	ctx context.Context,
+	ownerID string,
+	convID uuid.UUID,
+	limit int,
+) ([]*domain.Message, error) {
+	if limit <= 0 {
+		limit = 6
+	}
+
+	var convExists bool
+	checkQuery := `SELECT EXISTS(SELECT 1 FROM conversations WHERE id = $1 AND owner_id = $2);`
+	err := r.pool.QueryRow(ctx, checkQuery, convID, ownerID).Scan(&convExists)
+	if err != nil {
+		return nil, domain.NewInternalError("failed to verify conversation ownership", err)
+	}
+	if !convExists {
+		return nil, domain.NewNotFoundError("Conversation not found.")
+	}
+
+	query := `
+		SELECT m.id, m.conversation_id, m.role, m.content, m.citations, m.created_at
+		FROM messages m
+		JOIN conversations c ON c.id = m.conversation_id
+		WHERE m.conversation_id = $1 AND c.owner_id = $2
+		ORDER BY m.created_at DESC, m.id DESC
+		LIMIT $3;
+	`
+
+	rows, err := r.pool.Query(ctx, query, convID, ownerID, limit)
+	if err != nil {
+		return nil, domain.NewInternalError("failed to query recent messages", err)
+	}
+	defer rows.Close()
+
+	var messages []*domain.Message
+	for rows.Next() {
+		msg := &domain.Message{}
+		var citationsBytes []byte
+		err := rows.Scan(
+			&msg.ID,
+			&msg.ConversationID,
+			&msg.Role,
+			&msg.Content,
+			&citationsBytes,
+			&msg.CreatedAt,
+		)
+		if err != nil {
+			return nil, domain.NewInternalError("failed to scan message row", err)
+		}
+		if len(citationsBytes) > 0 {
+			var cits any
+			if err := json.Unmarshal(citationsBytes, &cits); err == nil {
+				msg.Citations = cits
+			}
+		}
+		if msg.Citations == nil {
+			msg.Citations = []any{}
+		}
+		messages = append(messages, msg)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, domain.NewInternalError("error iterating recent message rows", err)
+	}
+
+	// Reverse slice so order is chronological (oldest first)
+	for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
+		messages[i], messages[j] = messages[j], messages[i]
+	}
+
+	return messages, nil
+}
+
+// SaveTurn transactionally stores both the user question and the assistant response,
+// touches or updates the conversation's title/updated_at, and guarantees consistency.
+func (r *PostgresConversationRepo) SaveTurn(
+	ctx context.Context,
+	ownerID string,
+	convID uuid.UUID,
+	userContent string,
+	assistantContent string,
+	citations any,
+	updateTitleTo string,
+) (*domain.Message, *domain.Message, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return nil, nil, domain.NewInternalError("failed to start transaction", err)
+	}
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
+
+	// Lock and verify conversation exists and is owned by ownerID
+	var existingTitle string
+	err = tx.QueryRow(ctx, "SELECT title FROM conversations WHERE id = $1 AND owner_id = $2 FOR UPDATE;", convID, ownerID).Scan(&existingTitle)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil, domain.NewNotFoundError("Conversation not found.")
+		}
+		return nil, nil, domain.NewInternalError("failed to lock conversation", err)
+	}
+
+	// Update conversation title and updated_at if title needs update
+	if updateTitleTo != "" {
+		_, err = tx.Exec(ctx, "UPDATE conversations SET title = $1, updated_at = now() WHERE id = $2;", updateTitleTo, convID)
+		if err != nil {
+			return nil, nil, domain.NewInternalError("failed to update conversation title", err)
+		}
+	} else {
+		_, err = tx.Exec(ctx, "UPDATE conversations SET updated_at = now() WHERE id = $1;", convID)
+		if err != nil {
+			return nil, nil, domain.NewInternalError("failed to touch conversation updated_at", err)
+		}
+	}
+
+	// Insert user message
+	userMsg := &domain.Message{
+		ConversationID: convID,
+		Role:           "user",
+		Content:        userContent,
+		Citations:      []any{},
+	}
+	err = tx.QueryRow(ctx, `
+		INSERT INTO messages (conversation_id, role, content, citations)
+		VALUES ($1, $2, $3, '[]'::jsonb)
+		RETURNING id, created_at;
+	`, convID, userMsg.Role, userMsg.Content).Scan(&userMsg.ID, &userMsg.CreatedAt)
+	if err != nil {
+		return nil, nil, domain.NewInternalError("failed to insert user message", err)
+	}
+
+	// Insert assistant message
+	if citations == nil {
+		citations = []any{}
+	}
+	citBytes, err := json.Marshal(citations)
+	if err != nil {
+		return nil, nil, domain.NewInternalError("failed to serialize citations", err)
+	}
+
+	asstMsg := &domain.Message{
+		ConversationID: convID,
+		Role:           "assistant",
+		Content:        assistantContent,
+		Citations:      citations,
+	}
+	err = tx.QueryRow(ctx, `
+		INSERT INTO messages (conversation_id, role, content, citations)
+		VALUES ($1, $2, $3, $4::jsonb)
+		RETURNING id, created_at;
+	`, convID, asstMsg.Role, asstMsg.Content, string(citBytes)).Scan(&asstMsg.ID, &asstMsg.CreatedAt)
+	if err != nil {
+		return nil, nil, domain.NewInternalError("failed to insert assistant message", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, nil, domain.NewInternalError("failed to commit conversation turn", err)
+	}
+
+	return userMsg, asstMsg, nil
+}

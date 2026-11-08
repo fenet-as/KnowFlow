@@ -125,13 +125,14 @@ func NewRouter(opts RouterOptions) *gin.Engine {
 		apiV1.POST("/ask", opts.RAGHandler.Ask)
 	}
 
-	// Conversation endpoints (KF-28)
+	// Conversation endpoints (KF-28, KF-29)
 	if opts.ConversationHandler != nil {
 		apiV1.POST("/conversations", opts.ConversationHandler.Create)
 		apiV1.GET("/conversations", opts.ConversationHandler.List)
 		apiV1.GET("/conversations/:id", opts.ConversationHandler.GetByID)
 		apiV1.DELETE("/conversations/:id", opts.ConversationHandler.Delete)
 		apiV1.GET("/conversations/:id/messages", opts.ConversationHandler.ListMessages)
+		apiV1.POST("/conversations/:id/messages", opts.ConversationHandler.PostMessage)
 	}
 
 	return r

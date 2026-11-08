@@ -12,7 +12,9 @@ import {
 } from 'lucide-react';
 import { DocumentItem, ApiError } from '../api/client';
 import { useApi } from '../api/useApi';
+import { useToast } from '../context/ToastContext';
 import { formatBytes, formatDate } from '../lib/format';
+import { SkeletonRow } from '../components/Skeleton';
 
 const MAX_FILE_BYTES = 1048576; // 1 MB limit
 const ALLOWED_EXTENSIONS = ['.txt', '.md'];
@@ -25,6 +27,7 @@ interface UploadItemStatus {
 
 export function DocumentsPage() {
   const api = useApi();
+  const toast = useToast();
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -123,6 +126,7 @@ export function DocumentsPage() {
           );
           // Prepend to document list
           setDocuments((prev) => [uploaded, ...prev]);
+          toast.success(`Uploaded ${item.file.name}`);
         } catch (err) {
           const errorMsg =
             err instanceof ApiError ? err.message : 'Upload failed. Try again.';
@@ -159,14 +163,16 @@ export function DocumentsPage() {
   const confirmDelete = async () => {
     if (!deleteConfirmDoc) return;
     const docId = deleteConfirmDoc.id;
+    const filename = deleteConfirmDoc.filename;
     setDeletingId(docId);
     try {
       await api.deleteDocument(docId);
       setDocuments((prev) => prev.filter((d) => d.id !== docId));
       setDeleteConfirmDoc(null);
+      toast.success(`Deleted ${filename}`);
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : 'Failed to delete document';
-      alert(msg);
+      toast.error(msg);
     } finally {
       setDeletingId(null);
     }
@@ -269,9 +275,24 @@ export function DocumentsPage() {
       {/* Document List */}
       <div className="documents-section">
         {loading ? (
-          <div className="loading-state">
-            <Loader2 className="spinner" size={32} />
-            <p>Loading your documents...</p>
+          <div className="documents-table-wrapper">
+            <table className="documents-table">
+              <thead>
+                <tr>
+                  <th>Filename</th>
+                  <th>Size</th>
+                  <th>Status</th>
+                  <th>Chunks</th>
+                  <th>Uploaded</th>
+                  <th className="text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                <SkeletonRow />
+                <SkeletonRow />
+                <SkeletonRow />
+              </tbody>
+            </table>
           </div>
         ) : fetchError ? (
           <div className="error-state-card">

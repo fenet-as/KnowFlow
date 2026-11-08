@@ -1,6 +1,6 @@
 import { Link, useLocation } from 'react-router-dom';
 import { SignedIn, SignedOut, UserButton } from '@clerk/clerk-react';
-import { FileText, MessageSquare, Home, Sparkles } from 'lucide-react';
+import { FileText, MessageSquare, Home, Sparkles, Search } from 'lucide-react';
 
 export function Navbar() {
   const location = useLocation();
@@ -29,8 +29,12 @@ export function Navbar() {
             <span>Documents</span>
           </Link>
           <Link to="/ask" className={`nav-link ${isActive('/ask')}`}>
+            <Search size={16} />
+            <span>Ask</span>
+          </Link>
+          <Link to="/chat" className={`nav-link ${location.pathname.startsWith('/chat') ? 'active-nav' : ''}`}>
             <MessageSquare size={16} />
-            <span>Ask & Chat</span>
+            <span>Chat</span>
           </Link>
         </nav>
 

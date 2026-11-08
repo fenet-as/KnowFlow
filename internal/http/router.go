@@ -24,9 +24,10 @@ type RouterOptions struct {
 	CORSOrigins     []string
 	MaxUploadBytes  int64
 	ClerkVerifier   *auth.ClerkVerifier
-	DocumentHandler *DocumentHandler
-	ChunkHandler    *ChunkHandler
-	RAGHandler      *RAGHandler
+	DocumentHandler     *DocumentHandler
+	ChunkHandler        *ChunkHandler
+	RAGHandler          *RAGHandler
+	ConversationHandler *ConversationHandler
 }
 
 // NewRouter initializes the Gin engine with strict middleware ordering and route groups.
@@ -122,6 +123,15 @@ func NewRouter(opts RouterOptions) *gin.Engine {
 	// Stateless Ask endpoint (KF-20)
 	if opts.RAGHandler != nil {
 		apiV1.POST("/ask", opts.RAGHandler.Ask)
+	}
+
+	// Conversation endpoints (KF-28)
+	if opts.ConversationHandler != nil {
+		apiV1.POST("/conversations", opts.ConversationHandler.Create)
+		apiV1.GET("/conversations", opts.ConversationHandler.List)
+		apiV1.GET("/conversations/:id", opts.ConversationHandler.GetByID)
+		apiV1.DELETE("/conversations/:id", opts.ConversationHandler.Delete)
+		apiV1.GET("/conversations/:id/messages", opts.ConversationHandler.ListMessages)
 	}
 
 	return r

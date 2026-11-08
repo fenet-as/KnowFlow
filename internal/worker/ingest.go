@@ -17,18 +17,20 @@ import (
 	pgvector "github.com/pgvector/pgvector-go"
 )
 
-// IngestionHandler implements background document ingestion (KF-24).
+// IngestionHandler implements background document ingestion (KF-24, KF-25).
 // It chunks document text, embeds in batches, and in one atomic transaction:
 // replaces chunks, marks document ready with chunk count, and marks the job succeeded.
+// Transient errors are retried with exponential backoff and jitter up to configured max attempts.
 type IngestionHandler struct {
-	pool     *pgxpool.Pool
-	chunker  chunk.Chunker
-	embedder embed.Embedder
-	jobRepo  repo.JobRepo
-	logger   *slog.Logger
+	pool        *pgxpool.Pool
+	chunker     chunk.Chunker
+	embedder    embed.Embedder
+	jobRepo     repo.JobRepo
+	logger      *slog.Logger
+	retryPolicy RetryPolicy
 }
 
-// NewIngestionHandler constructs a new IngestionHandler.
+// NewIngestionHandler constructs a new IngestionHandler with default retry policy.
 func NewIngestionHandler(
 	pool *pgxpool.Pool,
 	chunker chunk.Chunker,
@@ -40,12 +42,19 @@ func NewIngestionHandler(
 		logger = slog.Default()
 	}
 	return &IngestionHandler{
-		pool:     pool,
-		chunker:  chunker,
-		embedder: embedder,
-		jobRepo:  jobRepo,
-		logger:   logger,
+		pool:        pool,
+		chunker:     chunker,
+		embedder:    embedder,
+		jobRepo:     jobRepo,
+		logger:      logger,
+		retryPolicy: DefaultRetryPolicy(),
 	}
+}
+
+// WithRetryPolicy overrides the default retry policy on the handler.
+func (h *IngestionHandler) WithRetryPolicy(p RetryPolicy) *IngestionHandler {
+	h.retryPolicy = p
+	return h
 }
 
 // HandleJob executes the full ingestion pipeline for an ingest_document job.
@@ -60,10 +69,10 @@ func (h *IngestionHandler) HandleJob(ctx context.Context, job *domain.Job) error
 	`
 
 	var (
-		docOwnerID   string
-		docFilename  string
-		docRaw       string
-		docStatus    string
+		docOwnerID  string
+		docFilename string
+		docRaw      string
+		docStatus   string
 	)
 
 	err := h.pool.QueryRow(ctx, docQuery, docID).Scan(
@@ -82,7 +91,7 @@ func (h *IngestionHandler) HandleJob(ctx context.Context, job *domain.Job) error
 			)
 			return nil
 		}
-		return h.failDocumentAndJob(ctx, docID, job.ID, fmt.Sprintf("failed to read document: %v", err))
+		return h.handleError(ctx, docID, job, fmt.Errorf("failed to read document: %w", err))
 	}
 
 	// 2. Mark document as 'processing'
@@ -93,7 +102,7 @@ func (h *IngestionHandler) HandleJob(ctx context.Context, job *domain.Job) error
 	`
 	tag, err := h.pool.Exec(ctx, markProcessingSQL, docID)
 	if err != nil {
-		return h.failDocumentAndJob(ctx, docID, job.ID, fmt.Sprintf("failed to set status processing: %v", err))
+		return h.handleError(ctx, docID, job, fmt.Errorf("failed to set status processing: %w", err))
 	}
 	if tag.RowsAffected() == 0 {
 		// Document was deleted concurrently
@@ -104,7 +113,7 @@ func (h *IngestionHandler) HandleJob(ctx context.Context, job *domain.Job) error
 	// 3. Segment content into deterministic chunks
 	chunks, err := h.chunker.Split(docRaw)
 	if err != nil {
-		return h.failDocumentAndJob(ctx, docID, job.ID, fmt.Sprintf("chunking failed: %v", err))
+		return h.handleError(ctx, docID, job, fmt.Errorf("chunking failed: %w", err))
 	}
 
 	// 4. Generate embeddings in batches
@@ -117,12 +126,15 @@ func (h *IngestionHandler) HandleJob(ctx context.Context, job *domain.Job) error
 
 		embeddings, err = h.embedder.Embed(ctx, texts, embed.EmbedKindDocument)
 		if err != nil {
-			return h.failDocumentAndJob(ctx, docID, job.ID, fmt.Sprintf("embedding generation failed: %v", err))
+			return h.handleError(ctx, docID, job, fmt.Errorf("embedding generation failed: %w", err))
 		}
 
 		if len(embeddings) != len(chunks) {
-			return h.failDocumentAndJob(ctx, docID, job.ID,
-				fmt.Sprintf("embedder returned %d vectors for %d chunks", len(embeddings), len(chunks)),
+			return h.handleError(ctx, docID, job,
+				domain.NewPermanentError(
+					fmt.Sprintf("embedder returned %d vectors for %d chunks", len(embeddings), len(chunks)),
+					nil,
+				),
 			)
 		}
 	}
@@ -130,7 +142,7 @@ func (h *IngestionHandler) HandleJob(ctx context.Context, job *domain.Job) error
 	// 5. Atomic transaction: replace chunks, set document ready, mark job succeeded (KF-24)
 	tx, err := h.pool.Begin(ctx)
 	if err != nil {
-		return h.failDocumentAndJob(ctx, docID, job.ID, fmt.Sprintf("failed to begin transaction: %v", err))
+		return h.handleError(ctx, docID, job, fmt.Errorf("failed to begin transaction: %w", err))
 	}
 	defer func() {
 		_ = tx.Rollback(ctx)
@@ -139,7 +151,7 @@ func (h *IngestionHandler) HandleJob(ctx context.Context, job *domain.Job) error
 	// 5a. Clear any existing chunks for this document (ensures running twice yields exact same chunk set)
 	deleteChunksSQL := `DELETE FROM chunks WHERE document_id = $1;`
 	if _, err := tx.Exec(ctx, deleteChunksSQL, docID); err != nil {
-		return h.failDocumentAndJob(ctx, docID, job.ID, fmt.Sprintf("failed to clear existing chunks: %v", err))
+		return h.handleError(ctx, docID, job, fmt.Errorf("failed to clear existing chunks: %w", err))
 	}
 
 	// 5b. Insert new chunks
@@ -161,7 +173,7 @@ func (h *IngestionHandler) HandleJob(ctx context.Context, job *domain.Job) error
 				vec,
 			)
 			if err != nil {
-				return h.failDocumentAndJob(ctx, docID, job.ID, fmt.Sprintf("failed to insert chunk %d: %v", ch.Index, err))
+				return h.handleError(ctx, docID, job, fmt.Errorf("failed to insert chunk %d: %w", ch.Index, err))
 			}
 		}
 	}
@@ -174,7 +186,7 @@ func (h *IngestionHandler) HandleJob(ctx context.Context, job *domain.Job) error
 	`
 	docTag, err := tx.Exec(ctx, updateDocSQL, docID, len(chunks))
 	if err != nil {
-		return h.failDocumentAndJob(ctx, docID, job.ID, fmt.Sprintf("failed to update document to ready: %v", err))
+		return h.handleError(ctx, docID, job, fmt.Errorf("failed to update document to ready: %w", err))
 	}
 	if docTag.RowsAffected() == 0 {
 		// Document deleted mid-transaction, end cleanly
@@ -189,12 +201,12 @@ func (h *IngestionHandler) HandleJob(ctx context.Context, job *domain.Job) error
 		WHERE id = $1;
 	`
 	if _, err := tx.Exec(ctx, updateJobSQL, job.ID); err != nil {
-		return h.failDocumentAndJob(ctx, docID, job.ID, fmt.Sprintf("failed to complete job: %v", err))
+		return h.handleError(ctx, docID, job, fmt.Errorf("failed to complete job: %w", err))
 	}
 
 	// 5e. Commit transaction
 	if err := tx.Commit(ctx); err != nil {
-		return h.failDocumentAndJob(ctx, docID, job.ID, fmt.Sprintf("failed to commit ingestion transaction: %v", err))
+		return h.handleError(ctx, docID, job, fmt.Errorf("failed to commit ingestion transaction: %w", err))
 	}
 
 	h.logger.Info("Document ingestion succeeded",
@@ -207,15 +219,46 @@ func (h *IngestionHandler) HandleJob(ctx context.Context, job *domain.Job) error
 	return nil
 }
 
-// failDocumentAndJob records a readable error on both the document and job.
-func (h *IngestionHandler) failDocumentAndJob(ctx context.Context, docID uuid.UUID, jobID uuid.UUID, errMsg string) error {
-	h.logger.Error("Document ingestion failed",
+// handleError processes errors according to the retry policy (KF-25):
+// - Transient errors with attempts < max_attempts are retried with exponential backoff & jitter via RetryLater.
+// - Permanent errors or exhausted attempts mark the document 'failed' with a readable error message and fail the job.
+func (h *IngestionHandler) handleError(ctx context.Context, docID uuid.UUID, job *domain.Job, err error) error {
+	isTransient := ClassifyError(err)
+	maxAttempts := job.MaxAttempts
+	if maxAttempts <= 0 {
+		maxAttempts = h.retryPolicy.MaxAttempts
+	}
+
+	readableErrMsg := err.Error()
+
+	// Transient error with remaining attempts -> RetryLater
+	if isTransient && job.Attempts < maxAttempts {
+		delay := h.retryPolicy.CalculateDelay(job.Attempts)
+		h.logger.Warn("Transient ingestion error, scheduling retry with backoff",
+			"document_id", docID,
+			"job_id", job.ID,
+			"attempt", job.Attempts,
+			"max_attempts", maxAttempts,
+			"delay", delay,
+			"error", readableErrMsg,
+		)
+
+		retryCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = h.jobRepo.RetryLater(retryCtx, job.ID, delay, readableErrMsg)
+		return err
+	}
+
+	// Permanent failure or retry attempts exhausted:
+	h.logger.Error("Ingestion failed permanently or max attempts exhausted",
 		"document_id", docID,
-		"job_id", jobID,
-		"error", errMsg,
+		"job_id", job.ID,
+		"attempt", job.Attempts,
+		"max_attempts", maxAttempts,
+		"is_transient", isTransient,
+		"error", readableErrMsg,
 	)
 
-	// Persist readable error on document using independent timeout context
 	failCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -224,10 +267,8 @@ func (h *IngestionHandler) failDocumentAndJob(ctx context.Context, docID uuid.UU
 		SET status = 'failed', error_message = $2, updated_at = now()
 		WHERE id = $1;
 	`
-	_, _ = h.pool.Exec(failCtx, updateDocSQL, docID, errMsg)
+	_, _ = h.pool.Exec(failCtx, updateDocSQL, docID, readableErrMsg)
+	_ = h.jobRepo.Fail(failCtx, job.ID, readableErrMsg)
 
-	// Mark job as failed permanently in queue
-	_ = h.jobRepo.Fail(failCtx, jobID, errMsg)
-
-	return errors.New(errMsg)
+	return err
 }

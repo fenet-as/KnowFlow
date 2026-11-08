@@ -1,0 +1,233 @@
+package worker
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"log/slog"
+	"time"
+
+	"github.com/fenet-as/KnowFlow/internal/chunk"
+	"github.com/fenet-as/KnowFlow/internal/domain"
+	"github.com/fenet-as/KnowFlow/internal/embed"
+	"github.com/fenet-as/KnowFlow/internal/repo"
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+	pgvector "github.com/pgvector/pgvector-go"
+)
+
+// IngestionHandler implements background document ingestion (KF-24).
+// It chunks document text, embeds in batches, and in one atomic transaction:
+// replaces chunks, marks document ready with chunk count, and marks the job succeeded.
+type IngestionHandler struct {
+	pool     *pgxpool.Pool
+	chunker  chunk.Chunker
+	embedder embed.Embedder
+	jobRepo  repo.JobRepo
+	logger   *slog.Logger
+}
+
+// NewIngestionHandler constructs a new IngestionHandler.
+func NewIngestionHandler(
+	pool *pgxpool.Pool,
+	chunker chunk.Chunker,
+	embedder embed.Embedder,
+	jobRepo repo.JobRepo,
+	logger *slog.Logger,
+) *IngestionHandler {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	return &IngestionHandler{
+		pool:     pool,
+		chunker:  chunker,
+		embedder: embedder,
+		jobRepo:  jobRepo,
+		logger:   logger,
+	}
+}
+
+// HandleJob executes the full ingestion pipeline for an ingest_document job.
+func (h *IngestionHandler) HandleJob(ctx context.Context, job *domain.Job) error {
+	docID := job.DocumentID
+
+	// 1. Fetch document from database
+	docQuery := `
+		SELECT id, owner_id, filename, raw_content, status
+		FROM documents
+		WHERE id = $1;
+	`
+
+	var (
+		docOwnerID   string
+		docFilename  string
+		docRaw       string
+		docStatus    string
+	)
+
+	err := h.pool.QueryRow(ctx, docQuery, docID).Scan(
+		&docID,
+		&docOwnerID,
+		&docFilename,
+		&docRaw,
+		&docStatus,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			// A document deleted before or mid-job ends cleanly (KF-24)
+			h.logger.Info("Document deleted before or mid-job, ending ingestion cleanly",
+				"document_id", docID,
+				"job_id", job.ID,
+			)
+			return nil
+		}
+		return h.failDocumentAndJob(ctx, docID, job.ID, fmt.Sprintf("failed to read document: %v", err))
+	}
+
+	// 2. Mark document as 'processing'
+	markProcessingSQL := `
+		UPDATE documents
+		SET status = 'processing', updated_at = now()
+		WHERE id = $1;
+	`
+	tag, err := h.pool.Exec(ctx, markProcessingSQL, docID)
+	if err != nil {
+		return h.failDocumentAndJob(ctx, docID, job.ID, fmt.Sprintf("failed to set status processing: %v", err))
+	}
+	if tag.RowsAffected() == 0 {
+		// Document was deleted concurrently
+		h.logger.Info("Document removed concurrently during status update", "document_id", docID)
+		return nil
+	}
+
+	// 3. Segment content into deterministic chunks
+	chunks, err := h.chunker.Split(docRaw)
+	if err != nil {
+		return h.failDocumentAndJob(ctx, docID, job.ID, fmt.Sprintf("chunking failed: %v", err))
+	}
+
+	// 4. Generate embeddings in batches
+	var embeddings [][]float32
+	if len(chunks) > 0 {
+		texts := make([]string, len(chunks))
+		for i, ch := range chunks {
+			texts[i] = ch.Content
+		}
+
+		embeddings, err = h.embedder.Embed(ctx, texts, embed.EmbedKindDocument)
+		if err != nil {
+			return h.failDocumentAndJob(ctx, docID, job.ID, fmt.Sprintf("embedding generation failed: %v", err))
+		}
+
+		if len(embeddings) != len(chunks) {
+			return h.failDocumentAndJob(ctx, docID, job.ID,
+				fmt.Sprintf("embedder returned %d vectors for %d chunks", len(embeddings), len(chunks)),
+			)
+		}
+	}
+
+	// 5. Atomic transaction: replace chunks, set document ready, mark job succeeded (KF-24)
+	tx, err := h.pool.Begin(ctx)
+	if err != nil {
+		return h.failDocumentAndJob(ctx, docID, job.ID, fmt.Sprintf("failed to begin transaction: %v", err))
+	}
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
+
+	// 5a. Clear any existing chunks for this document (ensures running twice yields exact same chunk set)
+	deleteChunksSQL := `DELETE FROM chunks WHERE document_id = $1;`
+	if _, err := tx.Exec(ctx, deleteChunksSQL, docID); err != nil {
+		return h.failDocumentAndJob(ctx, docID, job.ID, fmt.Sprintf("failed to clear existing chunks: %v", err))
+	}
+
+	// 5b. Insert new chunks
+	if len(chunks) > 0 {
+		insertChunkSQL := `
+			INSERT INTO chunks (
+				document_id, owner_id, chunk_index, content, heading, token_count, embedding
+			) VALUES ($1, $2, $3, $4, $5, $6, $7);
+		`
+		for i, ch := range chunks {
+			vec := pgvector.NewVector(embeddings[i])
+			_, err := tx.Exec(ctx, insertChunkSQL,
+				docID,
+				docOwnerID,
+				ch.Index,
+				ch.Content,
+				ch.Heading,
+				ch.TokenCount,
+				vec,
+			)
+			if err != nil {
+				return h.failDocumentAndJob(ctx, docID, job.ID, fmt.Sprintf("failed to insert chunk %d: %v", ch.Index, err))
+			}
+		}
+	}
+
+	// 5c. Set document ready with chunk count and clear error message
+	updateDocSQL := `
+		UPDATE documents
+		SET status = 'ready', chunk_count = $2, error_message = NULL, updated_at = now()
+		WHERE id = $1;
+	`
+	docTag, err := tx.Exec(ctx, updateDocSQL, docID, len(chunks))
+	if err != nil {
+		return h.failDocumentAndJob(ctx, docID, job.ID, fmt.Sprintf("failed to update document to ready: %v", err))
+	}
+	if docTag.RowsAffected() == 0 {
+		// Document deleted mid-transaction, end cleanly
+		h.logger.Info("Document deleted mid-transaction, ending job cleanly", "document_id", docID)
+		return nil
+	}
+
+	// 5d. Mark job succeeded and clear locks
+	updateJobSQL := `
+		UPDATE jobs
+		SET status = 'succeeded', locked_at = NULL, locked_by = NULL
+		WHERE id = $1;
+	`
+	if _, err := tx.Exec(ctx, updateJobSQL, job.ID); err != nil {
+		return h.failDocumentAndJob(ctx, docID, job.ID, fmt.Sprintf("failed to complete job: %v", err))
+	}
+
+	// 5e. Commit transaction
+	if err := tx.Commit(ctx); err != nil {
+		return h.failDocumentAndJob(ctx, docID, job.ID, fmt.Sprintf("failed to commit ingestion transaction: %v", err))
+	}
+
+	h.logger.Info("Document ingestion succeeded",
+		"document_id", docID,
+		"filename", docFilename,
+		"chunk_count", len(chunks),
+		"job_id", job.ID,
+	)
+
+	return nil
+}
+
+// failDocumentAndJob records a readable error on both the document and job.
+func (h *IngestionHandler) failDocumentAndJob(ctx context.Context, docID uuid.UUID, jobID uuid.UUID, errMsg string) error {
+	h.logger.Error("Document ingestion failed",
+		"document_id", docID,
+		"job_id", jobID,
+		"error", errMsg,
+	)
+
+	// Persist readable error on document using independent timeout context
+	failCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	updateDocSQL := `
+		UPDATE documents
+		SET status = 'failed', error_message = $2, updated_at = now()
+		WHERE id = $1;
+	`
+	_, _ = h.pool.Exec(failCtx, updateDocSQL, docID, errMsg)
+
+	// Mark job as failed permanently in queue
+	_ = h.jobRepo.Fail(failCtx, jobID, errMsg)
+
+	return errors.New(errMsg)
+}

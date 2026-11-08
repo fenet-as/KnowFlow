@@ -83,6 +83,57 @@ func TestExtractCitations(t *testing.T) {
 		assert.Equal(t, domain.NoRelevantContextMessage, cleaned)
 		assert.Empty(t, citations)
 	})
+
+	t.Run("duplicate markers in answer text are deduplicated in citation list", func(t *testing.T) {
+		raw := "Point A [1] is important, and point B also relies on [1]."
+		cleaned, citations, grounded := ExtractCitations(raw, passages)
+
+		assert.True(t, grounded)
+		assert.Equal(t, raw, cleaned, "both markers should be kept in cleaned text")
+		require.Len(t, citations, 1, "citations slice should be deduplicated")
+		assert.Equal(t, 1, citations[0].Marker)
+	})
+
+	t.Run("adjacent markers without spaces are parsed correctly", func(t *testing.T) {
+		raw := "This combined fact is proven by both sources [1][2]."
+		cleaned, citations, grounded := ExtractCitations(raw, passages)
+
+		assert.True(t, grounded)
+		assert.Equal(t, raw, cleaned)
+		require.Len(t, citations, 2)
+		assert.Equal(t, 1, citations[0].Marker)
+		assert.Equal(t, 2, citations[1].Marker)
+	})
+
+	t.Run("zero marker [0] is stripped as invalid", func(t *testing.T) {
+		raw := "Invalid zero index [0] followed by valid [1]."
+		cleaned, citations, grounded := ExtractCitations(raw, passages)
+
+		assert.True(t, grounded)
+		assert.NotContains(t, cleaned, "[0]")
+		assert.Contains(t, cleaned, "[1]")
+		require.Len(t, citations, 1)
+		assert.Equal(t, 1, citations[0].Marker)
+	})
+
+	t.Run("non-citation markdown brackets are preserved", func(t *testing.T) {
+		raw := "Refer to [documentation](https://knowflow.io) for setup [1]."
+		cleaned, citations, grounded := ExtractCitations(raw, passages)
+
+		assert.True(t, grounded)
+		assert.Contains(t, cleaned, "[documentation](https://knowflow.io)")
+		assert.Contains(t, cleaned, "[1]")
+		require.Len(t, citations, 1)
+	})
+
+	t.Run("empty passages slice returns not found", func(t *testing.T) {
+		raw := "Answer with marker [1]."
+		cleaned, citations, grounded := ExtractCitations(raw, nil)
+
+		assert.False(t, grounded)
+		assert.Equal(t, domain.NoRelevantContextMessage, cleaned)
+		assert.Empty(t, citations)
+	})
 }
 
 func TestExtractSnippet(t *testing.T) {
@@ -93,4 +144,17 @@ func TestExtractSnippet(t *testing.T) {
 	snippet := ExtractSnippet(long, 200)
 	assert.LessOrEqual(t, len([]rune(snippet)), 203) // 200 + "..."
 	assert.True(t, strings.HasSuffix(snippet, "..."))
+
+	t.Run("word boundary snap does not cut mid-word", func(t *testing.T) {
+		text := "The quick brown fox jumps over the lazy dog repeatedly until the sentence becomes very long."
+		snip := ExtractSnippet(text, 25)
+		assert.False(t, strings.HasSuffix(snip, "un..."))
+		assert.True(t, strings.HasSuffix(snip, "..."))
+	})
+
+	t.Run("Unicode runes and emojis", func(t *testing.T) {
+		unicodeText := "KnowFlow provides AI ドキュメント検索 🚀 with high accuracy and fast retrieval."
+		snip := ExtractSnippet(unicodeText, 35)
+		assert.Contains(t, snip, "🚀")
+	})
 }

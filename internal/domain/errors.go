@@ -31,6 +31,8 @@ var (
 	ErrUpstream             = errors.New("upstream error")
 	ErrUpstreamUnavailable  = errors.New("upstream unavailable")
 	ErrInternal             = errors.New("internal server error")
+	ErrTransient            = errors.New("transient error")
+	ErrPermanent            = errors.New("permanent error")
 )
 
 // AppError is the canonical typed domain error used throughout the service layer.
@@ -130,4 +132,32 @@ func NewInternalError(message string, err error) *AppError {
 		Message: message,
 		Err:     errors.Join(ErrInternal, err),
 	}
+}
+
+// NewTransientError creates an AppError classified as transient (retryable with backoff).
+func NewTransientError(message string, err error) *AppError {
+	return &AppError{
+		Code:    CodeUpstreamUnavailable,
+		Message: message,
+		Err:     errors.Join(ErrTransient, err),
+	}
+}
+
+// NewPermanentError creates an AppError classified as permanent (non-retryable, fails fast).
+func NewPermanentError(message string, err error) *AppError {
+	return &AppError{
+		Code:    CodeInternalError,
+		Message: message,
+		Err:     errors.Join(ErrPermanent, err),
+	}
+}
+
+// IsTransient checks if the error or any wrapped error is ErrTransient.
+func IsTransient(err error) bool {
+	return errors.Is(err, ErrTransient)
+}
+
+// IsPermanent checks if the error or any wrapped error is ErrPermanent.
+func IsPermanent(err error) bool {
+	return errors.Is(err, ErrPermanent)
 }

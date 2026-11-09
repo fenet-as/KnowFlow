@@ -9,16 +9,17 @@ This document provides a complete guide for demonstrating KnowFlow to an interns
 Complete this checklist 15 minutes before the demonstration to guarantee a flawless live presentation:
 
 - [ ] **Infrastructure Health:** Run `docker compose ps` and confirm all three containers (`knowflow-postgres`, `knowflow-api`, `knowflow-web`) are up and healthy.
-- [ ] **Database Migrations:** Run `make migrate-status` to verify all 5 schema migrations are applied.
-- [ ] **Corpus Seeding:** Execute the seed tool to populate the demo corpus:
+- [ ] **Database Migrations:** Run `make migrate-status` to verify all schema migrations (up to version 6) are applied.
+- [ ] **Corpus Seeding:** Execute the seed tool to populate the demo corpus and create default demo user:
   ```bash
   make seed
-  # Or: go run ./cmd/seed/main.go -dir "demo/corpus" -owner "<your_clerk_user_id>"
+  # Or: go run ./cmd/seed/main.go -dir "demo/corpus"
   ```
-- [ ] **API Keys & Environment:** Ensure `.env` has a valid `GEMINI_API_KEY` and `CLERK_ISSUER` configured.
+  *(Automatically provisions demo user `demo@knowflow.dev` with password `Demo1234!`)*
+- [ ] **API Keys & Environment:** Ensure `.env` has a valid `GEMINI_API_KEY` and `JWT_SECRET` configured.
 - [ ] **Browser Preparation:**
-  - Open `http://localhost:3000` in Google Chrome or your default browser.
-  - Sign in via Clerk.
+  - Open `http://localhost:5173` (or `http://localhost:3000` in Docker) in Google Chrome or your default browser.
+  - Sign in using the native login form or click **"Fill Demo Account"** (`demo@knowflow.dev` / `Demo1234!`).
   - Navigate to the **Documents** view and confirm all 5 demo documents are visible with green **ready** status badges:
     1. `01-employee-handbook.md` (12 chunks)
     2. `02-engineering-standards.md` (9 chunks)

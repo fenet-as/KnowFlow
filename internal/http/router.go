@@ -106,10 +106,7 @@ func NewRouter(opts RouterOptions) *gin.Engine {
 
 	// Protected business routes group (/api/v1)
 	apiV1 := r.Group("/api/v1")
-	var verifier auth.TokenVerifier = opts.TokenVerifier
-	if verifier == nil && opts.ClerkVerifier != nil {
-		verifier = opts.ClerkVerifier
-	}
+	verifier := auth.NewChainedVerifier(opts.TokenVerifier, opts.ClerkVerifier)
 	if verifier != nil {
 		apiV1.Use(auth.Middleware(verifier, RespondWithError))
 	}

@@ -14,10 +14,10 @@ import (
 )
 
 type mockUserRepo struct {
-	users      map[string]*domain.User
-	usersByID  map[uuid.UUID]*domain.User
-	tokens     map[string]*domain.RefreshToken
-	createErr  error
+	users         map[string]*domain.User
+	usersByID     map[uuid.UUID]*domain.User
+	tokens        map[string]*domain.RefreshToken
+	createErr     error
 	getByEmailErr error
 }
 

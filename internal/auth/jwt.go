@@ -26,6 +26,41 @@ type TokenVerifier interface {
 	VerifyToken(tokenStr string) (string, error)
 }
 
+// ChainedVerifier validates tokens across multiple verifiers in sequence.
+type ChainedVerifier struct {
+	verifiers []TokenVerifier
+}
+
+// NewChainedVerifier creates a combined verifier attempting each verifier in order.
+func NewChainedVerifier(verifiers ...TokenVerifier) TokenVerifier {
+	var nonNil []TokenVerifier
+	for _, v := range verifiers {
+		if v != nil {
+			nonNil = append(nonNil, v)
+		}
+	}
+	if len(nonNil) == 0 {
+		return nil
+	}
+	if len(nonNil) == 1 {
+		return nonNil[0]
+	}
+	return &ChainedVerifier{verifiers: nonNil}
+}
+
+// VerifyToken iterates over registered verifiers until one succeeds.
+func (c *ChainedVerifier) VerifyToken(tokenStr string) (string, error) {
+	var lastErr error
+	for _, v := range c.verifiers {
+		ownerID, err := v.VerifyToken(tokenStr)
+		if err == nil {
+			return ownerID, nil
+		}
+		lastErr = err
+	}
+	return "", lastErr
+}
+
 // JWTManager handles minting and validating native KnowFlow tokens.
 type JWTManager struct {
 	secret          []byte

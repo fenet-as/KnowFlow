@@ -36,11 +36,11 @@ KnowFlow strictly enforces a unidirectional layered architecture:
 [ Service Layer (Orchestration & Business Logic) ]
          │                   │
          ▼                   ▼
-[ Repositories (PostgreSQL) ]   [ External Clients (Gemini, Clerk) ]
+[ Repositories (PostgreSQL) ]   [ External Clients (Gemini) ]
 ```
 
 1. **HTTP Handlers (`internal/http/`):**
-   - Parse and validate incoming requests, extract verified auth claims (`owner_id` from Clerk JWT).
+   - Parse and validate incoming requests, extract verified auth claims (`owner_id` from JWT access token).
    - Delegate directly to a single service method.
    - Return standard success envelopes (`{"data": ...}`) or error envelopes (`{"error": {"code": "...", "message": "..."}}`).
    - Handlers contain **zero business logic**.
@@ -82,7 +82,7 @@ For complete deep-dive documentation on requirements, schemas, and subsystem des
 - 📋 [**Requirements & Use Cases**](docs/KnowFlow%20Requirements%20&%20Use%20Cases.md): Business goals, user stories, personas, and quality attributes.
 - ⚙️ [**Backend Guide**](docs/KnowFlow%20Backend%20Guide.md): Detailed backend service contracts, error handling standards, and worker specifications.
 - 🗄️ [**Database Guide**](docs/KnowFlow%20Database%20Guide.md): Relational schema, indices, migration workflows, and pgvector tuning.
-- 🎨 [**Frontend Guide**](docs/KnowFlow%20Frontend%20Guide.md): React component tree, Clerk auth integration, state machines, and UX guidelines.
+- 🎨 [**Frontend Guide**](docs/KnowFlow%20Frontend%20Guide.md): React component tree, native auth integration, state machines, and UX guidelines.
 - 🎯 [**Execution Backlog**](docs/KnowFlow%20Execution%20Backlog%20(v1).md): Complete phase-by-phase implementation issues and acceptance criteria.
 - 🔬 [**RAG Evaluation & Threshold Tuning**](docs/KnowFlow%20RAG%20Evaluation%20&%20Threshold%20Tuning.md): 20-question evaluation benchmark, $k=6$ selection, and $\tau=0.65$ threshold analysis.
 
@@ -93,8 +93,8 @@ For complete deep-dive documentation on requirements, schemas, and subsystem des
 - **Go:** 1.22 or higher
 - **Node.js:** 20+ and npm (for frontend single-page application)
 - **Docker & Docker Compose:** For running PostgreSQL with pgvector and containerized deployments
-- **Clerk Account:** For JWT authentication (`CLERK_ISSUER`)
-- **Google Gemini API Key:** For embeddings (`text-embedding-004`) and generative answers (`gemini-1.5-flash`)
+- **Google Gemini API Key:** For embeddings (`gemini-embedding-001`) and generative answers (`gemini-3.5-flash`)
+- **JWT Secret:** For self-hosted native authentication (`JWT_SECRET`, min 32 characters)
 
 ---
 
@@ -111,7 +111,7 @@ The fastest way to spin up the entire KnowFlow stack (PostgreSQL + pgvector, Go 
 2. **Configure environment:**
    ```bash
    cp .env.example .env
-   # Edit .env and supply your GEMINI_API_KEY and CLERK_ISSUER
+   # Edit .env and supply your GEMINI_API_KEY and JWT_SECRET
    ```
 
 3. **Start all services:**
@@ -169,11 +169,15 @@ The Vite development server will start at `http://localhost:5173`.
 | --- | --- | --- | --- |
 | `HTTP_ADDR` | Listening host and port for HTTP server | `:8080` | No |
 | `DATABASE_URL` | PostgreSQL connection string | `postgres://knowflow:knowflow@localhost:5433/knowflow?sslmode=disable` | **Yes** |
-| `CLERK_ISSUER` | Clerk JWT issuer URL (e.g. `https://clerk.your-domain.dev`) | - | **Yes** |
+| `JWT_SECRET` | Signing secret for native JWT access tokens (min 32 chars) | - | **Yes** |
+| `ACCESS_TOKEN_DURATION` | Lifespan of JWT access tokens | `15m` | No |
+| `REFRESH_TOKEN_DURATION` | Lifespan of rotatable refresh tokens | `168h` | No |
+| `CLERK_ISSUER` | Optional legacy Clerk JWT issuer URL fallback | - | No |
 | `CLERK_AUTHORIZED_PARTIES` | Comma-separated list of allowed `azp` origins | `http://localhost:5173,http://localhost:3000` | No |
 | `GEMINI_API_KEY` | Google Gemini API key | - | **Yes** |
-| `GEMINI_EMBEDDING_MODEL` | Gemini model for dense vector embeddings | `text-embedding-004` | No |
-| `GEMINI_GEN_MODEL` | Gemini generative model for answers | `gemini-1.5-flash` | No |
+| `EMBEDDING_MODEL` | Gemini model for dense vector embeddings | `gemini-embedding-001` | No |
+| `EMBEDDING_DIM` | Dense vector embedding dimensionality | `768` | No |
+| `LLM_MODEL` | Gemini generative model for answers | `gemini-3.5-flash` | No |
 | `RETRIEVAL_TOP_K` | Number of chunks retrieved per query ($k$) | `6` | No |
 | `RETRIEVAL_MIN_SCORE` | Relevance similarity score gate threshold ($\tau$) | `0.65` | No |
 | `WORKER_COUNT` | Number of background worker routines | `4` | No |
@@ -243,10 +247,50 @@ A comprehensive live demonstration script featuring a pre-demo checklist, five c
 
 All protected endpoints under `/api/v1` require the header:
 ```http
-Authorization: Bearer <clerk_jwt_session_token>
+Authorization: Bearer <jwt_access_token>
 ```
 
-### 1. Health & System
+### 1. Authentication (`/api/v1/auth`)
+
+#### `POST /api/v1/auth/register`
+Creates a new user account, mints a JWT access token, and sets an `HttpOnly` refresh token cookie.
+- **Request:**
+  ```json
+  {
+    "email": "user@example.com",
+    "password": "Password123!",
+    "full_name": "Jane Doe"
+  }
+  ```
+- **Response (201 Created):**
+  ```json
+  {
+    "user": {
+      "id": "123e4567-e89b-12d3-a456-426614174000",
+      "email": "user@example.com",
+      "full_name": "Jane Doe",
+      "role": "member",
+      "created_at": "2026-11-10T00:00:00Z",
+      "updated_at": "2026-11-10T00:00:00Z"
+    },
+    "access_token": "eyJhbGciOiJIUzI1NiIs...",
+    "expires_in": 900
+  }
+  ```
+
+#### `POST /api/v1/auth/login`
+Authenticates credentials, returns an access token, and sets an `HttpOnly` refresh token cookie.
+
+#### `POST /api/v1/auth/refresh`
+Rotates the session using the `knowflow_refresh_token` cookie and issues a new access token.
+
+#### `POST /api/v1/auth/logout`
+Revokes the active refresh token and clears the cookie.
+
+#### `GET /api/v1/auth/me` *(Protected)*
+Returns the authenticated caller's profile.
+
+### 2. Health & System
 
 #### `GET /healthz`
 Liveness probe.
@@ -275,7 +319,7 @@ Build and commit metadata.
 
 ---
 
-### 2. Documents
+### 3. Documents
 
 #### `POST /api/v1/documents`
 Upload a `.txt` or `.md` file for background chunking and embedding.
@@ -345,7 +389,7 @@ Delete a document and cascade deletion to its chunks and jobs.
 
 ---
 
-### 3. Chunks
+### 4. Chunks
 
 #### `GET /api/v1/chunks/:id`
 Retrieve passage text and metadata for a citation chip.
@@ -365,7 +409,7 @@ Retrieve passage text and metadata for a citation chip.
 
 ---
 
-### 4. Direct Question Answering (Single-Turn)
+### 5. Direct Question Answering (Single-Turn)
 
 #### `POST /api/v1/ask`
 Submit a question across all or selected documents.
@@ -408,7 +452,7 @@ Submit a question across all or selected documents.
 
 ---
 
-### 5. Conversations (Multi-Turn)
+### 6. Conversations (Multi-Turn)
 
 #### `POST /api/v1/conversations`
 Create a new conversation session.

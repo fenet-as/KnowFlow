@@ -75,3 +75,36 @@ func TestJWTManager_RefreshToken(t *testing.T) {
 	// Deterministic hash check
 	assert.Equal(t, hash, HashRefreshToken(raw))
 }
+
+type mockVerifier struct {
+	ownerID string
+	err     error
+}
+
+func (m *mockVerifier) VerifyToken(tokenStr string) (string, error) {
+	if m.err != nil {
+		return "", m.err
+	}
+	return m.ownerID, nil
+}
+
+func TestChainedVerifier(t *testing.T) {
+	v1 := &mockVerifier{err: assert.AnError}
+	v2 := &mockVerifier{ownerID: "owner-123"}
+
+	chain := NewChainedVerifier(v1, v2)
+	require.NotNil(t, chain)
+
+	owner, err := chain.VerifyToken("any-token")
+	require.NoError(t, err)
+	assert.Equal(t, "owner-123", owner)
+
+	// All failing
+	failingChain := NewChainedVerifier(v1, &mockVerifier{err: assert.AnError})
+	_, err = failingChain.VerifyToken("any-token")
+	assert.Error(t, err)
+
+	// Nil inputs
+	nilChain := NewChainedVerifier(nil, nil)
+	assert.Nil(t, nilChain)
+}

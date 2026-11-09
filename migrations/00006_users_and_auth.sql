@@ -31,3 +31,4 @@ CREATE INDEX idx_refresh_tokens_hash ON refresh_tokens (token_hash);
 -- +goose Down
 DROP TABLE IF EXISTS refresh_tokens;
 DROP TABLE IF EXISTS users;
+

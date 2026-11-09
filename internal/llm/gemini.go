@@ -47,7 +47,7 @@ func NewGeminiLLM(cfg GeminiLLMConfig) (*GeminiLLM, error) {
 
 	model := strings.TrimSpace(cfg.Model)
 	if model == "" {
-		model = "gemini-1.5-flash"
+		model = "gemini-3.5-flash"
 	}
 
 	baseURL := strings.TrimRight(strings.TrimSpace(cfg.BaseURL), "/")

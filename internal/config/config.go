@@ -86,7 +86,7 @@ func Load() (*Config, error) {
 		GeminiAPIKey:           geminiKey,
 		EmbeddingModel:         getEnv("EMBEDDING_MODEL", "gemini-embedding-001"),
 		EmbeddingDim:           getEnvInt("EMBEDDING_DIM", 768),
-		LLMModel:               getEnv("LLM_MODEL", "gemini-1.5-flash"),
+		LLMModel:               getEnv("LLM_MODEL", "gemini-3.5-flash"),
 		MaxUploadBytes:         getEnvInt64("MAX_UPLOAD_BYTES", 1048576), // 1 MB
 		ChunkTargetTokens:      getEnvInt("CHUNK_TARGET_TOKENS", 650),
 		ChunkMaxTokens:         getEnvInt("CHUNK_MAX_TOKENS", 800),

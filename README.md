@@ -226,6 +226,19 @@ Detailed tuning findings are documented in [**KnowFlow RAG Evaluation & Threshol
 
 ---
 
+## Demo Seed Data & Presentation Script
+
+To quickly prepare a demonstration environment with pre-ingested enterprise documents:
+```bash
+# Seed the demo corpus into PostgreSQL
+make seed
+# Or: go run ./cmd/seed -dir "demo/corpus"
+```
+
+A comprehensive live demonstration script featuring a pre-demo checklist, five curated demonstration questions (highlighting single-document lookup, multi-hop cross-document reasoning, conversational context, out-of-domain refusal, and prompt injection defense), and presenter talking points is provided in [**demo/DEMO_SCRIPT.md**](demo/DEMO_SCRIPT.md).
+
+---
+
 ## API Reference
 
 All protected endpoints under `/api/v1` require the header:

@@ -1,4 +1,4 @@
-.PHONY: all build run test test-integration test-coverage vet lint migrate migrate-up migrate-down migrate-status migrate-reset benchmark eval up down
+.PHONY: all build run test test-integration test-coverage vet lint migrate migrate-up migrate-down migrate-status migrate-reset benchmark eval seed up down
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "none")
@@ -53,6 +53,9 @@ benchmark:
 
 eval:
 	go run ./cmd/eval -corpus "demo/corpus" -k 6 -threshold 0.65
+
+seed:
+	go run ./cmd/seed -dir "demo/corpus" -db "$(DATABASE_URL)"
 
 up:
 	docker compose up -d

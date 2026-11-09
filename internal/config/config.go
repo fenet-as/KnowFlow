@@ -52,7 +52,9 @@ type Config struct {
 }
 
 // Load reads configuration from environment variables and validates required fields.
+// If a .env file is found in the current working directory, it populates unset environment variables.
 func Load() (*Config, error) {
+	loadDotEnv()
 	var missing []string
 
 	dbURL := getEnv("DATABASE_URL", "")
@@ -165,4 +167,30 @@ func getEnvDuration(key string, defaultVal time.Duration) time.Duration {
 		}
 	}
 	return defaultVal
+}
+
+// loadDotEnv reads key-value pairs from a local .env file if it exists,
+// populating any environment variables that are not already set.
+func loadDotEnv() {
+	data, err := os.ReadFile(".env")
+	if err != nil {
+		return
+	}
+	for _, rawLine := range strings.Split(string(data), "\n") {
+		line := strings.TrimSpace(rawLine)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) == 2 {
+			k := strings.TrimSpace(parts[0])
+			v := strings.TrimSpace(parts[1])
+			if len(v) >= 2 && ((v[0] == '"' && v[len(v)-1] == '"') || (v[0] == '\'' && v[len(v)-1] == '\'')) {
+				v = v[1 : len(v)-1]
+			}
+			if _, exists := os.LookupEnv(k); !exists {
+				os.Setenv(k, v)
+			}
+		}
+	}
 }

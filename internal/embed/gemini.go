@@ -52,7 +52,7 @@ func NewGeminiEmbedder(cfg GeminiEmbedderConfig) (*GeminiEmbedder, error) {
 
 	model := strings.TrimSpace(cfg.Model)
 	if model == "" {
-		model = "text-embedding-004"
+		model = "gemini-embedding-001"
 	}
 
 	dimension := cfg.Dimension
@@ -101,9 +101,10 @@ type geminiContent struct {
 }
 
 type geminiEmbedRequestItem struct {
-	Model    string        `json:"model"`
-	Content  geminiContent `json:"content"`
-	TaskType string        `json:"taskType,omitempty"`
+	Model                string        `json:"model"`
+	Content              geminiContent `json:"content"`
+	TaskType             string        `json:"taskType,omitempty"`
+	OutputDimensionality int           `json:"outputDimensionality,omitempty"`
 }
 
 type geminiBatchEmbedRequest struct {
@@ -154,7 +155,8 @@ func (g *GeminiEmbedder) Embed(ctx context.Context, texts []string, kind EmbedKi
 				Content: geminiContent{
 					Parts: []geminiPart{{Text: text}},
 				},
-				TaskType: taskType,
+				TaskType:             taskType,
+				OutputDimensionality: g.dimension,
 			})
 		}
 

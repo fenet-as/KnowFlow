@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fenet-as/KnowFlow/internal/auth"
 	"github.com/fenet-as/KnowFlow/internal/chunk"
 	"github.com/fenet-as/KnowFlow/internal/domain"
 	"github.com/fenet-as/KnowFlow/internal/embed"
@@ -109,6 +110,32 @@ func seedViaDatabase(opts SeedOptions, mdFiles []string) {
 
 	docRepo := repo.NewPostgresDocumentRepo(pool)
 	chunkRepo := repo.NewPostgresChunkRepo(pool)
+	userRepo := repo.NewUserRepo(pool)
+
+	// Ensure default demo user exists for seamless native login
+	demoEmail := "demo@knowflow.dev"
+	demoUser, err := userRepo.GetUserByEmail(ctx, demoEmail)
+	if err != nil {
+		hash, _ := auth.HashPassword("Demo1234!")
+		demoUser = &domain.User{
+			ID:           uuid.New(),
+			Email:        demoEmail,
+			PasswordHash: hash,
+			FullName:     "Demo User",
+			Role:         "admin",
+		}
+		if err := userRepo.CreateUser(ctx, demoUser); err != nil {
+			fmt.Printf("Warning: failed to create demo user: %v\n", err)
+		} else {
+			fmt.Printf("Created default demo user: %s (password: Demo1234!)\n", demoEmail)
+		}
+	} else {
+		fmt.Printf("Using demo user: %s (ID: %s)\n", demoEmail, demoUser.ID)
+	}
+
+	if demoUser != nil {
+		opts.OwnerID = demoUser.ID.String()
+	}
 
 	if opts.Clear {
 		fmt.Printf("Clearing existing documents for owner '%s'...\n", opts.OwnerID)
@@ -124,11 +151,11 @@ func seedViaDatabase(opts SeedOptions, mdFiles []string) {
 	var embedder embed.Embedder
 	apiKey := os.Getenv("GEMINI_API_KEY")
 	if apiKey != "" && apiKey != "dev_key" {
-		fmt.Println("Using Google Gemini Embedder (text-embedding-004)...")
+		fmt.Println("Using Google Gemini Embedder (gemini-embedding-001)...")
 		aiLimiter := rate.NewLimiter(rate.Limit(5), 10)
 		geminiEmbedder, err := embed.NewGeminiEmbedder(embed.GeminiEmbedderConfig{
 			APIKey:    apiKey,
-			Model:     "text-embedding-004",
+			Model:     "gemini-embedding-001",
 			Dimension: 768,
 			Timeout:   15 * time.Second,
 			Limiter:   aiLimiter,

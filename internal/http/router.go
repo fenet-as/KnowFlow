@@ -19,11 +19,13 @@ type DBChecker interface {
 
 // RouterOptions groups dependencies needed by the HTTP router.
 type RouterOptions struct {
-	Logger          *slog.Logger
-	DBChecker       DBChecker
-	CORSOrigins     []string
-	MaxUploadBytes  int64
-	ClerkVerifier   *auth.ClerkVerifier
+	Logger              *slog.Logger
+	DBChecker           DBChecker
+	CORSOrigins         []string
+	MaxUploadBytes      int64
+	TokenVerifier       auth.TokenVerifier
+	ClerkVerifier       *auth.ClerkVerifier
+	AuthHandler         *AuthHandler
 	DocumentHandler     *DocumentHandler
 	ChunkHandler        *ChunkHandler
 	RAGHandler          *RAGHandler
@@ -93,13 +95,29 @@ func NewRouter(opts RouterOptions) *gin.Engine {
 		c.JSON(http.StatusOK, platform.GetVersionInfo())
 	})
 
-	// Protected business routes group (/api/v1)
-	apiV1 := r.Group("/api/v1")
-	if opts.ClerkVerifier != nil {
-		apiV1.Use(auth.Middleware(opts.ClerkVerifier, RespondWithError))
+	// Public Auth routes group (/api/v1/auth)
+	if opts.AuthHandler != nil {
+		authGroup := r.Group("/api/v1/auth")
+		authGroup.POST("/register", opts.AuthHandler.Register)
+		authGroup.POST("/login", opts.AuthHandler.Login)
+		authGroup.POST("/refresh", opts.AuthHandler.Refresh)
+		authGroup.POST("/logout", opts.AuthHandler.Logout)
 	}
 
-	// Example protected identity verification route
+	// Protected business routes group (/api/v1)
+	apiV1 := r.Group("/api/v1")
+	var verifier auth.TokenVerifier = opts.TokenVerifier
+	if verifier == nil && opts.ClerkVerifier != nil {
+		verifier = opts.ClerkVerifier
+	}
+	if verifier != nil {
+		apiV1.Use(auth.Middleware(verifier, RespondWithError))
+	}
+
+	// Current authenticated user profile
+	if opts.AuthHandler != nil {
+		apiV1.GET("/auth/me", opts.AuthHandler.GetMe)
+	}
 	apiV1.GET("/me", func(c *gin.Context) {
 		ownerID := auth.GetOwnerID(c.Request.Context())
 		c.JSON(http.StatusOK, gin.H{

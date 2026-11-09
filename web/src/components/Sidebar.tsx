@@ -1,6 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
-import { useUser, UserButton, SignedIn, SignedOut } from '@clerk/clerk-react';
 import {
   Plus,
   FileText,
@@ -8,10 +7,12 @@ import {
   Lock,
   Trash2,
   Sparkles,
+  LogOut,
 } from 'lucide-react';
 import { Conversation, ApiError } from '../api/client';
 import { useApi } from '../api/useApi';
 import { useToast } from '../context/ToastContext';
+import { useAuth } from '../context/AuthContext';
 
 interface SidebarProps {
   mobileOpen?: boolean;
@@ -23,7 +24,7 @@ export function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarProps) {
   const location = useLocation();
   const api = useApi();
   const toast = useToast();
-  const { user } = useUser();
+  const { user, isAuthenticated, logout } = useAuth();
 
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -31,6 +32,11 @@ export function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarProps) {
 
   // Fetch recent conversations for the sidebar
   const loadConversations = useCallback(async () => {
+    if (!isAuthenticated) {
+      setConversations([]);
+      setLoading(false);
+      return;
+    }
     try {
       const data = await api.listConversations({ limit: 15 });
       setConversations(data.items);
@@ -39,7 +45,7 @@ export function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarProps) {
     } finally {
       setLoading(false);
     }
-  }, [api]);
+  }, [api, isAuthenticated]);
 
   useEffect(() => {
     loadConversations();
@@ -68,6 +74,26 @@ export function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarProps) {
       toast.showToast(msg, 'error');
     } finally {
       setDeletingId(null);
+    }
+  };
+
+  const getInitials = (name?: string, email?: string) => {
+    if (name && name.trim()) {
+      const parts = name.trim().split(/\s+/);
+      if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+      return parts[0].slice(0, 2).toUpperCase();
+    }
+    if (email) return email.slice(0, 2).toUpperCase();
+    return 'U';
+  };
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+      toast.showToast('Logged out successfully', 'info');
+      navigate('/sign-in');
+    } catch {
+      toast.showToast('Logout failed', 'error');
     }
   };
 
@@ -183,22 +209,31 @@ export function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarProps) {
 
       {/* Bottom Profile / Account */}
       <div className="sidebar-footer">
-        <SignedIn>
+        {isAuthenticated ? (
           <div className="sidebar-user-profile">
-            <UserButton afterSignOutUrl="/sign-in" />
+            <div className="sidebar-user-avatar-circle" title={user?.email}>
+              {getInitials(user?.full_name, user?.email)}
+            </div>
             <div className="user-details">
               <span className="user-name">
-                {user?.fullName || user?.primaryEmailAddress?.emailAddress?.split('@')[0] || 'User'}
+                {user?.full_name || user?.email?.split('@')[0] || 'User'}
               </span>
-              <span className="user-workspace">Personal workspace</span>
+              <span className="user-workspace">{user?.email || 'Personal workspace'}</span>
             </div>
+            <button
+              onClick={handleLogout}
+              className="btn-sidebar-logout"
+              title="Sign out"
+              aria-label="Sign out"
+            >
+              <LogOut size={16} />
+            </button>
           </div>
-        </SignedIn>
-        <SignedOut>
+        ) : (
           <NavLink to="/sign-in" className="sidebar-signin-btn" onClick={onCloseMobile}>
             Sign in to KnowFlow
           </NavLink>
-        </SignedOut>
+        )}
       </div>
     </aside>
   );

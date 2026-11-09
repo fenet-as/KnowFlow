@@ -66,14 +66,22 @@ func main() {
 	}
 	logger.Info("Database pool connected and embedding dimension validated", "dim", cfg.EmbeddingDim)
 
-	// Initialize Clerk JWT session verifier
-	clerkVerifier, err := auth.NewClerkVerifier(auth.ClerkVerifierOptions{
-		Issuer:            cfg.ClerkIssuer,
-		AuthorizedParties: cfg.ClerkAuthorizedParties,
-	})
-	if err != nil {
-		logger.Error("Failed to initialize Clerk verifier", "error", err)
-		os.Exit(1)
+	// Initialize native JWT manager and User Auth
+	jwtManager := auth.NewJWTManager(cfg.JWTSecret, cfg.AccessTokenDuration, cfg.RefreshTokenDuration)
+	userRepo := repo.NewUserRepo(dbPool)
+	authService := service.NewAuthService(userRepo, jwtManager)
+	authHandler := internalhttp.NewAuthHandler(authService)
+
+	// Optional Clerk JWT session verifier for backward compatibility
+	var clerkVerifier *auth.ClerkVerifier
+	if cfg.ClerkIssuer != "" {
+		cv, err := auth.NewClerkVerifier(auth.ClerkVerifierOptions{
+			Issuer:            cfg.ClerkIssuer,
+			AuthorizedParties: cfg.ClerkAuthorizedParties,
+		})
+		if err == nil {
+			clerkVerifier = cv
+		}
 	}
 
 	// Initialize repositories and services
@@ -161,11 +169,13 @@ func main() {
 
 	// Initialize Gin HTTP router with Request ID, Recovery, Access Logger, CORS, Limits, and Probes
 	router := internalhttp.NewRouter(internalhttp.RouterOptions{
-		Logger:          logger,
-		DBChecker:       dbPool,
-		CORSOrigins:     cfg.CORSAllowedOrigins,
-		MaxUploadBytes:  cfg.MaxUploadBytes,
-		ClerkVerifier:   clerkVerifier,
+		Logger:              logger,
+		DBChecker:           dbPool,
+		CORSOrigins:         cfg.CORSAllowedOrigins,
+		MaxUploadBytes:      cfg.MaxUploadBytes,
+		TokenVerifier:       jwtManager,
+		ClerkVerifier:       clerkVerifier,
+		AuthHandler:         authHandler,
 		DocumentHandler:     docHandler,
 		ChunkHandler:        chunkHandler,
 		RAGHandler:          ragHandler,

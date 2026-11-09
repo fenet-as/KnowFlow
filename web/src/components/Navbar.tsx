@@ -1,12 +1,23 @@
 import { Link, useLocation } from 'react-router-dom';
-import { SignedIn, SignedOut, UserButton } from '@clerk/clerk-react';
-import { FileText, MessageSquare, Home, Sparkles, Search } from 'lucide-react';
+import { FileText, MessageSquare, Home, Sparkles, Search, LogOut } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
 export function Navbar() {
   const location = useLocation();
+  const { user, isAuthenticated, logout } = useAuth();
 
   const isActive = (path: string) => {
     return location.pathname === path ? 'active-nav' : '';
+  };
+
+  const getInitials = (name?: string, email?: string) => {
+    if (name && name.trim()) {
+      const parts = name.trim().split(/\s+/);
+      if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+      return parts[0].slice(0, 2).toUpperCase();
+    }
+    if (email) return email.slice(0, 2).toUpperCase();
+    return 'KF';
   };
 
   return (
@@ -39,17 +50,26 @@ export function Navbar() {
         </nav>
 
         <div className="navbar-auth">
-          <SignedIn>
-            <UserButton afterSignOutUrl="/" />
-          </SignedIn>
-          <SignedOut>
+          {isAuthenticated ? (
+            <div className="navbar-user-menu">
+              <div className="navbar-user-avatar" title={user?.email}>
+                {getInitials(user?.full_name, user?.email)}
+              </div>
+              <button
+                onClick={() => logout()}
+                className="btn-navbar-logout"
+                title="Sign out"
+              >
+                <LogOut size={16} />
+              </button>
+            </div>
+          ) : (
             <Link to="/sign-in" className="btn-primary">
               Sign In
             </Link>
-          </SignedOut>
+          )}
         </div>
       </div>
     </header>
   );
 }
-

@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useUser } from '@clerk/clerk-react';
 import { FileUp, MessageSquare, ShieldCheck, CheckCircle2, AlertCircle } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
 export function HomePage() {
-  const { isSignedIn, user } = useUser();
+  const { isAuthenticated, user } = useAuth();
   const [apiReady, setApiReady] = useState<boolean | null>(null);
 
   useEffect(() => {
@@ -28,14 +28,14 @@ export function HomePage() {
           Upload markdown and text handbooks, policies, and manuals. Ask questions with verifiable, citation-backed answers and persistent chat threads.
         </p>
 
-        {isSignedIn ? (
+        {isAuthenticated ? (
           <div className="welcome-banner">
-            <p>Welcome back, <strong>{user?.fullName || user?.primaryEmailAddress?.emailAddress || 'User'}</strong>!</p>
+            <p>Welcome back, <strong>{user?.full_name || user?.email || 'User'}</strong>!</p>
           </div>
         ) : (
           <div className="cta-group">
             <Link to="/sign-in" className="btn-primary-large">
-              Get Started with Clerk
+              Sign In to KnowFlow
             </Link>
           </div>
         )}
@@ -90,4 +90,3 @@ export function HomePage() {
     </div>
   );
 }
-

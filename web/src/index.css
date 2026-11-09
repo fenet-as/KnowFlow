@@ -1757,3 +1757,277 @@ body {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.4; }
 }
+
+/* ==========================================================================
+   Native Custom Auth UI (Figma Specification)
+   ========================================================================== */
+
+.native-auth-card {
+  width: 100%;
+  max-width: 440px;
+  background-color: #FFFFFF;
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  padding: 2.25rem 2rem;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.03);
+}
+
+.native-auth-header {
+  margin-bottom: 1.5rem;
+}
+
+.native-auth-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  letter-spacing: -0.02em;
+  margin-bottom: 0.25rem;
+}
+
+.native-auth-subtitle {
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+}
+
+.btn-demo-quick {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0.625rem 1rem;
+  background-color: #F0FDF4;
+  border: 1px solid #BBF7D0;
+  border-radius: 8px;
+  color: #166534;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease-in-out;
+  margin-bottom: 1.25rem;
+}
+
+.btn-demo-quick:hover {
+  background-color: #DCFCE7;
+  border-color: #86EFAC;
+}
+
+.auth-divider {
+  display: flex;
+  align-items: center;
+  text-align: center;
+  margin: 1.25rem 0;
+  color: #94A3B8;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  content: '';
+  flex: 1;
+  border-bottom: 1px solid #E2E8F0;
+}
+
+.auth-divider span {
+  padding: 0 12px;
+}
+
+.auth-error-alert {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0.75rem 1rem;
+  background-color: #FEF2F2;
+  border: 1px solid #FCA5A5;
+  border-radius: 8px;
+  color: #991B1B;
+  font-size: 0.8125rem;
+  margin-bottom: 1.25rem;
+}
+
+.native-auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.125rem;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.form-label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.label-hint {
+  font-weight: 400;
+  color: #64748B;
+  font-size: 0.75rem;
+}
+
+.form-input {
+  width: 100%;
+  padding: 0.625rem 0.875rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  font-size: 0.875rem;
+  color: var(--color-text-primary);
+  background-color: #FFFFFF;
+  transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+  outline: none;
+}
+
+.form-input:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(18, 53, 36, 0.12);
+}
+
+.password-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.password-input-wrapper .form-input {
+  padding-right: 2.5rem;
+}
+
+.password-toggle-btn {
+  position: absolute;
+  right: 0.75rem;
+  background: none;
+  border: none;
+  color: #94A3B8;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  padding: 4px;
+}
+
+.password-toggle-btn:hover {
+  color: var(--color-text-primary);
+}
+
+.btn-auth-submit {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background-color: var(--color-primary);
+  color: #FFFFFF;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 0.5rem;
+  transition: background-color 0.15s ease-in-out;
+}
+
+.btn-auth-submit:hover:not(:disabled) {
+  background-color: #0E2C1E;
+}
+
+.btn-auth-submit:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.auth-footer-switch {
+  margin-top: 1.5rem;
+  text-align: center;
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+}
+
+.auth-link {
+  color: var(--color-primary);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.auth-link:hover {
+  text-decoration: underline;
+}
+
+/* Sidebar Profile Enhancement */
+.sidebar-user-avatar-circle {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #123524 0%, #2E7D32 100%);
+  color: #FFFFFF;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  flex-shrink: 0;
+}
+
+.btn-sidebar-logout {
+  background: none;
+  border: none;
+  color: #94A3B8;
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease-in-out;
+  margin-left: auto;
+}
+
+.btn-sidebar-logout:hover {
+  background-color: #F1F5F9;
+  color: #DC2626;
+}
+
+/* Navbar Profile Pill */
+.navbar-user-menu {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.navbar-user-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #123524 0%, #2E7D32 100%);
+  color: #FFFFFF;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.btn-navbar-logout {
+  background: none;
+  border: none;
+  color: #64748B;
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease-in-out;
+}
+
+.btn-navbar-logout:hover {
+  background-color: #F1F5F9;
+  color: #DC2626;
+}
+

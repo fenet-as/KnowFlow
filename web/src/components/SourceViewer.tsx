@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { X, ExternalLink, AlertTriangle, Loader2 } from 'lucide-react';
+import { X, AlertTriangle, Loader2, CheckCircle2 } from 'lucide-react';
 import { Citation, ChunkDetail, ApiClient } from '../api/client';
 
 interface SourceViewerProps {
@@ -36,7 +36,6 @@ export function SourceViewer({ citation, onClose, api }: SourceViewerProps) {
       .catch((err) => {
         if (isMounted) {
           setLoading(false);
-          // If document was deleted or chunk not found, gracefully indicate using citation snapshot
           setError(
             err.status === 404
               ? 'The source chunk or document no longer exists in your account.'
@@ -64,71 +63,90 @@ export function SourceViewer({ citation, onClose, api }: SourceViewerProps) {
   if (!citation) return null;
 
   return (
-    <div className="drawer-overlay" onClick={onClose} role="dialog" aria-modal="true">
-      <div className="drawer-container" onClick={(e) => e.stopPropagation()}>
-        <div className="drawer-header">
-          <div className="drawer-title-area">
-            <span className="source-marker-badge">[{citation.marker}]</span>
-            <div>
-              <h3 className="drawer-title">{citation.document_name}</h3>
-              {citation.heading && (
-                <p className="drawer-subtitle">Section: {citation.heading}</p>
-              )}
-            </div>
+    <div className="figma-drawer-backdrop" onClick={onClose} role="dialog" aria-modal="true">
+      <div className="figma-drawer-container" onClick={(e) => e.stopPropagation()}>
+        {/* Drawer Header (matching Figma 'Source viewer') */}
+        <div className="figma-drawer-header">
+          <div className="drawer-eyebrow-row">
+            <span className="source-eyebrow">SOURCE {citation.marker}</span>
+            <button
+              onClick={onClose}
+              className="drawer-close-btn"
+              aria-label="Close source viewer"
+            >
+              <X size={18} />
+            </button>
           </div>
-          <button
-            onClick={onClose}
-            className="drawer-close-btn"
-            aria-label="Close source viewer"
-          >
-            <X size={20} />
-          </button>
+          <h3 className="drawer-source-title">
+            {citation.document_name}
+            {citation.heading && (
+              <span className="drawer-source-heading"> / {citation.heading}</span>
+            )}
+          </h3>
+          <div className="drawer-meta-badges">
+            <span className="doc-format-pill">Markdown</span>
+            <span className="doc-status-pill">
+              <CheckCircle2 size={11} /> Ready
+            </span>
+          </div>
         </div>
 
-        <div className="drawer-body">
+        {/* Drawer Body */}
+        <div className="figma-drawer-body">
           {loading && (
-            <div className="drawer-loading">
-              <Loader2 className="spinner" size={28} />
-              <span>Loading source passage...</span>
+            <div className="drawer-loading-box">
+              <Loader2 className="spinner" size={24} />
+              <span>Retrieving source passage...</span>
             </div>
           )}
 
           {error && (
-            <div className="drawer-error-alert">
-              <AlertTriangle size={18} />
-              <div>
-                <p className="drawer-error-text">{error}</p>
-                <div className="drawer-snippet-fallback">
-                  <strong>Snapshot Snippet:</strong>
-                  <p>{citation.snippet}</p>
-                </div>
-              </div>
+            <div className="drawer-alert-box">
+              <AlertTriangle size={16} />
+              <p>{error}</p>
             </div>
           )}
 
-          {!loading && chunk && (
-            <div className="drawer-passage-container">
-              <div className="passage-meta">
-                <span>Chunk #{chunk.chunk_index + 1}</span>
-                <span>•</span>
-                <span>{chunk.token_count} tokens</span>
-              </div>
-              <div className="passage-content">{chunk.content}</div>
+          {/* Highlighted Quote Passage with Left Green Accent Bar */}
+          <div className="highlighted-passage-card">
+            <div className="passage-accent-bar" />
+            <div className="passage-content">
+              <p className="passage-text">
+                {chunk?.content || citation.snippet}
+              </p>
             </div>
-          )}
+          </div>
+
+          {/* Passage Metadata Card */}
+          <div className="passage-metadata-box">
+            <div className="metadata-row">
+              <span className="meta-label">Passage index:</span>
+              <span className="meta-value">
+                {chunk ? `Chunk ${chunk.chunk_index + 1}` : `Marker [${citation.marker}]`}
+              </span>
+            </div>
+            {citation.heading && (
+              <div className="metadata-row">
+                <span className="meta-label">Section:</span>
+                <span className="meta-value">{citation.heading}</span>
+              </div>
+            )}
+            {chunk && (
+              <div className="metadata-row">
+                <span className="meta-label">Length:</span>
+                <span className="meta-value">{chunk.token_count} estimated tokens</span>
+              </div>
+            )}
+          </div>
         </div>
 
-        <div className="drawer-footer">
-          <div className="drawer-footer-info">
-            <ExternalLink size={14} />
-            <span>Citation verified against retrieved passage</span>
-          </div>
-          <button onClick={onClose} className="btn-secondary">
-            Close
+        {/* Drawer Footer */}
+        <div className="figma-drawer-footer">
+          <button onClick={onClose} className="btn-figma-secondary w-full">
+            Close viewer
           </button>
         </div>
       </div>
     </div>
   );
 }
-

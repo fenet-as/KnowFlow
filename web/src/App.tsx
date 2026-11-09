@@ -1,9 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { ClerkProvider } from '@clerk/clerk-react';
 import { Layout } from './components/Layout';
-import { HomePage } from './pages/HomePage';
 import { DocumentsPage } from './pages/DocumentsPage';
-import { AskPage } from './pages/AskPage';
 import { ChatPage } from './pages/ChatPage';
 import { SignInPage, SignUpPage } from './pages/AuthPages';
 import { ToastProvider } from './context/ToastContext';
@@ -24,12 +22,12 @@ export default function App() {
             </div>
             <Routes>
               <Route path="/" element={<Layout />}>
-                <Route index element={<HomePage />} />
+                <Route index element={<DocumentsPage />} />
                 <Route path="documents" element={<DocumentsPage />} />
-                <Route path="ask" element={<AskPage />} />
+                <Route path="ask" element={<ChatPage />} />
                 <Route path="chat" element={<ChatPage />} />
                 <Route path="chat/:conversationId" element={<ChatPage />} />
-                <Route path="*" element={<Navigate to="/" replace />} />
+                <Route path="*" element={<Navigate to="/documents" replace />} />
               </Route>
             </Routes>
           </div>
@@ -44,14 +42,14 @@ export default function App() {
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<Layout />}>
-              <Route index element={<HomePage />} />
+              <Route index element={<DocumentsPage />} />
               <Route path="documents" element={<DocumentsPage />} />
-              <Route path="ask" element={<AskPage />} />
+              <Route path="ask" element={<ChatPage />} />
               <Route path="chat" element={<ChatPage />} />
               <Route path="chat/:conversationId" element={<ChatPage />} />
               <Route path="sign-in/*" element={<SignInPage />} />
               <Route path="sign-up/*" element={<SignUpPage />} />
-              <Route path="*" element={<Navigate to="/" replace />} />
+              <Route path="*" element={<Navigate to="/documents" replace />} />
             </Route>
           </Routes>
         </BrowserRouter>

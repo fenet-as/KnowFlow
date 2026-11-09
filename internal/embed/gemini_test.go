@@ -28,6 +28,7 @@ func TestGeminiEmbedder_Success(t *testing.T) {
 		assert.Len(t, reqPayload.Requests, 2)
 		assert.Equal(t, "RETRIEVAL_DOCUMENT", reqPayload.Requests[0].TaskType)
 		assert.Equal(t, "models/text-embedding-004", reqPayload.Requests[0].Model)
+		assert.Equal(t, expectedDim, reqPayload.Requests[0].OutputDimensionality)
 
 		// Create mock response
 		resp := geminiBatchEmbedResponse{

@@ -2317,6 +2317,66 @@ body {
    Home / Landing Page (Clean & Modern)
    ========================================================================== */
 
+.home-page-wrapper {
+  min-height: 100vh;
+  background-color: var(--color-bg);
+  display: flex;
+  flex-direction: column;
+}
+
+.home-nav {
+  height: 64px;
+  padding: 0 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--color-border);
+  background-color: #FFFFFF;
+}
+
+.home-nav-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+}
+
+.home-brand-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background-color: var(--color-primary);
+  color: #FFFFFF;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.home-brand-title {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: var(--color-primary-dark);
+  letter-spacing: -0.02em;
+}
+
+.home-nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.home-nav-link {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--color-text-muted);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+.home-nav-link:hover {
+  color: var(--color-primary-dark);
+}
+
 .home-page-container {
   max-width: 900px;
   margin: 0 auto;

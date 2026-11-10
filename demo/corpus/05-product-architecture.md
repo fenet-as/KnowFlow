@@ -12,7 +12,7 @@ KnowFlow enforces a strict unidirectional dependency graph:
 [ Service Layer (Orchestration & Business Logic) ]
          │                   │
          ▼                   ▼
-[ Repositories (PostgreSQL) ]   [ External Clients (Gemini, Clerk) ]
+[ Repositories (PostgreSQL) ]   [ External Clients (Gemini) ]
 ```
 
 ### Key Architectural Tenets
@@ -27,7 +27,7 @@ When a user uploads a `.txt` or `.md` file (up to 1 MB):
 3. **Worker Processing:**
    - Background workers poll the `jobs` queue using `FOR UPDATE SKIP LOCKED`.
    - The document is segmented into semantic chunks (target ~650 tokens, max 800 tokens, 12% overlap) preserving markdown headings and code fences.
-   - Text chunks are batched and embedded via Google Gemini `text-embedding-004` (768 dimensions) with task type `RETRIEVAL_DOCUMENT`.
+   - Text chunks are batched and embedded via Google Gemini `gemini-embedding-001` (768 dimensions) with task type `RETRIEVAL_DOCUMENT`.
    - Chunks and vectors are inserted into PostgreSQL `chunks` table using `pgvector`.
    - Document status transitions to `ready`, and the job transitions to `succeeded`.
 

@@ -50,6 +50,14 @@ func MapError(err error, requestID string) (int, ErrorResponse) {
 				RequestID: requestID,
 			},
 		}
+	case errors.Is(err, domain.ErrConflict):
+		return http.StatusConflict, ErrorResponse{
+			Error: ErrorDetail{
+				Code:      string(domain.CodeConflict),
+				Message:   "Resource conflict occurred.",
+				RequestID: requestID,
+			},
+		}
 	case errors.Is(err, domain.ErrValidation):
 		return http.StatusBadRequest, ErrorResponse{
 			Error: ErrorDetail{
@@ -124,6 +132,8 @@ func mapCodeToStatus(code domain.ErrorCode) int {
 		return http.StatusUnauthorized
 	case domain.CodeValidationFailed:
 		return http.StatusBadRequest
+	case domain.CodeConflict:
+		return http.StatusConflict
 	case domain.CodeNotFound:
 		return http.StatusNotFound
 	case domain.CodePayloadTooLarge:

@@ -107,9 +107,9 @@ func (v *ClerkVerifier) VerifyToken(tokenString string) (string, error) {
 	return claims.Subject, nil
 }
 
-// Middleware returns a Gin middleware that enforces Clerk authentication on protected routes.
+// Middleware returns a Gin middleware that enforces authentication on protected routes.
 // Unauthenticated requests return 401 with standard error envelope without leaking internal details.
-func Middleware(verifier *ClerkVerifier, errorHandler func(c *gin.Context, err error)) gin.HandlerFunc {
+func Middleware(verifier TokenVerifier, errorHandler func(c *gin.Context, err error)) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {

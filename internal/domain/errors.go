@@ -12,6 +12,7 @@ const (
 	CodeUnauthorized         ErrorCode = "unauthorized"
 	CodeValidationFailed     ErrorCode = "validation_failed"
 	CodeNotFound             ErrorCode = "not_found"
+	CodeConflict             ErrorCode = "conflict"
 	CodePayloadTooLarge      ErrorCode = "payload_too_large"
 	CodeUnsupportedMediaType ErrorCode = "unsupported_media_type"
 	CodeRateLimited          ErrorCode = "rate_limited"
@@ -24,6 +25,7 @@ const (
 var (
 	ErrNotFound             = errors.New("not found")
 	ErrValidation           = errors.New("validation failed")
+	ErrConflict             = errors.New("conflict")
 	ErrUnauthorized         = errors.New("unauthorized")
 	ErrPayloadTooLarge      = errors.New("payload too large")
 	ErrUnsupportedMediaType = errors.New("unsupported media type")
@@ -59,6 +61,15 @@ func NewNotFoundError(message string) *AppError {
 		Code:    CodeNotFound,
 		Message: message,
 		Err:     ErrNotFound,
+	}
+}
+
+// NewConflictError creates an AppError for conflicting state (e.g. duplicate email).
+func NewConflictError(message string) *AppError {
+	return &AppError{
+		Code:    CodeConflict,
+		Message: message,
+		Err:     ErrConflict,
 	}
 }
 

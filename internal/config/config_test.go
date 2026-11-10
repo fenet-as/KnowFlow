@@ -61,11 +61,6 @@ func TestLoad_MissingRequiredFields(t *testing.T) {
 			expectedError: "DATABASE_URL",
 		},
 		{
-			name:          "missing CLERK_ISSUER",
-			clearEnvs:     []string{"CLERK_ISSUER"},
-			expectedError: "CLERK_ISSUER",
-		},
-		{
 			name:          "missing GEMINI_API_KEY",
 			clearEnvs:     []string{"GEMINI_API_KEY"},
 			expectedError: "GEMINI_API_KEY",

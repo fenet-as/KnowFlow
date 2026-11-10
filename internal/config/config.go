@@ -21,6 +21,9 @@ type Config struct {
 	CORSAllowedOrigins     []string
 	ClerkIssuer            string
 	ClerkAuthorizedParties []string
+	JWTSecret              string
+	AccessTokenDuration    time.Duration
+	RefreshTokenDuration   time.Duration
 
 	// AI Provider
 	GeminiAPIKey   string
@@ -63,9 +66,6 @@ func Load() (*Config, error) {
 	}
 
 	clerkIssuer := getEnv("CLERK_ISSUER", "")
-	if clerkIssuer == "" {
-		missing = append(missing, "CLERK_ISSUER")
-	}
 
 	geminiKey := getEnv("GEMINI_API_KEY", "")
 	if geminiKey == "" {
@@ -83,6 +83,9 @@ func Load() (*Config, error) {
 		CORSAllowedOrigins:     getEnvSlice("CORS_ALLOWED_ORIGINS", []string{"http://localhost:5173", "http://localhost:3000"}),
 		ClerkIssuer:            clerkIssuer,
 		ClerkAuthorizedParties: getEnvSlice("CLERK_AUTHORIZED_PARTIES", []string{"http://localhost:5173", "http://localhost:3000"}),
+		JWTSecret:              getEnv("JWT_SECRET", "dev_secret_key_knowflow_32_bytes_super_secure!"),
+		AccessTokenDuration:    getEnvDuration("ACCESS_TOKEN_DURATION", 15*time.Minute),
+		RefreshTokenDuration:   getEnvDuration("REFRESH_TOKEN_DURATION", 7*24*time.Hour),
 		GeminiAPIKey:           geminiKey,
 		EmbeddingModel:         getEnv("EMBEDDING_MODEL", "gemini-embedding-001"),
 		EmbeddingDim:           getEnvInt("EMBEDDING_DIM", 768),

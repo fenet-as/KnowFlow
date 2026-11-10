@@ -1,5 +1,19 @@
 // KnowFlow Typed API Client
 
+export interface User {
+  id: string;
+  email: string;
+  full_name: string;
+  role: string;
+  created_at: string;
+}
+
+export interface AuthResponse {
+  user: User;
+  access_token: string;
+  expires_in: number;
+}
+
 export interface DocumentItem {
   id: string;
   filename: string;
@@ -102,33 +116,73 @@ export class ApiError extends Error {
 
 export interface ApiClientOptions {
   baseUrl?: string;
-  getToken?: () => Promise<string | null>;
+  initialToken?: string | null;
+  onTokenRefreshed?: (token: string | null) => void;
+  onUnauthorized?: () => void;
 }
 
 export class ApiClient {
   private baseUrl: string;
-  private getToken?: () => Promise<string | null>;
+  private accessToken: string | null = null;
+  private refreshPromise: Promise<string | null> | null = null;
+  private onTokenRefreshed?: (token: string | null) => void;
+  private onUnauthorized?: () => void;
 
   constructor(options: ApiClientOptions = {}) {
     const defaultUrl = import.meta.env.VITE_API_BASE_URL || '/api/v1';
     this.baseUrl = (options.baseUrl || defaultUrl).replace(/\/$/, '');
-    this.getToken = options.getToken;
+    this.accessToken = options.initialToken || null;
+    this.onTokenRefreshed = options.onTokenRefreshed;
+    this.onUnauthorized = options.onUnauthorized;
   }
 
-  private async request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  setAccessToken(token: string | null) {
+    this.accessToken = token;
+  }
+
+  getAccessToken(): string | null {
+    return this.accessToken;
+  }
+
+  private async refreshAccessToken(): Promise<string | null> {
+    if (this.refreshPromise) {
+      return this.refreshPromise;
+    }
+
+    this.refreshPromise = (async () => {
+      try {
+        const url = `${this.baseUrl}/auth/refresh`;
+        const res = await fetch(url, {
+          method: 'POST',
+          credentials: 'include',
+        });
+        if (!res.ok) {
+          this.accessToken = null;
+          this.onTokenRefreshed?.(null);
+          return null;
+        }
+        const data = (await res.json()) as AuthResponse;
+        this.accessToken = data.access_token;
+        this.onTokenRefreshed?.(data.access_token);
+        return data.access_token;
+      } catch (err) {
+        this.accessToken = null;
+        this.onTokenRefreshed?.(null);
+        return null;
+      } finally {
+        this.refreshPromise = null;
+      }
+    })();
+
+    return this.refreshPromise;
+  }
+
+  private async request<T>(path: string, options: RequestInit = {}, retryOn401 = true): Promise<T> {
     const url = `${this.baseUrl}${path.startsWith('/') ? path : `/${path}`}`;
     const headers = new Headers(options.headers || {});
 
-    // Attach Clerk JWT Bearer token if token provider is configured
-    if (this.getToken) {
-      try {
-        const token = await this.getToken();
-        if (token) {
-          headers.set('Authorization', `Bearer ${token}`);
-        }
-      } catch (err) {
-        console.warn('Failed to acquire auth token for request', err);
-      }
+    if (this.accessToken) {
+      headers.set('Authorization', `Bearer ${this.accessToken}`);
     }
 
     // Set default headers for JSON payloads
@@ -144,8 +198,17 @@ export class ApiClient {
 
     const response = await fetch(url, {
       ...options,
+      credentials: 'include',
       headers,
     });
+
+    if (response.status === 401 && retryOn401 && !path.startsWith('/auth/')) {
+      const newToken = await this.refreshAccessToken();
+      if (newToken) {
+        return this.request<T>(path, options, false);
+      }
+      this.onUnauthorized?.();
+    }
 
     if (!response.ok) {
       let errPayload: ApiErrorDetail = {
@@ -159,7 +222,7 @@ export class ApiClient {
           errPayload = json.error;
         }
       } catch {
-        // Response is non-JSON
+        // Non-JSON response
       }
 
       throw new ApiError(response.status, errPayload);
@@ -170,6 +233,68 @@ export class ApiClient {
     }
 
     return (await response.json()) as T;
+  }
+
+  // --- Native Auth Endpoints ---
+
+  async register(req: { email: string; password: string; full_name: string }): Promise<AuthResponse> {
+    const resp = await this.request<AuthResponse>('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify(req),
+    }, false);
+    this.setAccessToken(resp.access_token);
+    this.onTokenRefreshed?.(resp.access_token);
+    return resp;
+  }
+
+  async login(req: { email: string; password: string }): Promise<AuthResponse> {
+    const resp = await this.request<AuthResponse>('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify(req),
+    }, false);
+    this.setAccessToken(resp.access_token);
+    this.onTokenRefreshed?.(resp.access_token);
+    return resp;
+  }
+
+  async refresh(): Promise<AuthResponse> {
+    const resp = await this.request<AuthResponse>('/auth/refresh', {
+      method: 'POST',
+    }, false);
+    this.setAccessToken(resp.access_token);
+    this.onTokenRefreshed?.(resp.access_token);
+    return resp;
+  }
+
+  async logout(): Promise<void> {
+    try {
+      await this.request<void>('/auth/logout', {
+        method: 'POST',
+      }, false);
+    } finally {
+      this.setAccessToken(null);
+      this.onTokenRefreshed?.(null);
+    }
+  }
+
+  async getMe(): Promise<User> {
+    return this.request<User>('/auth/me', {
+      method: 'GET',
+    });
+  }
+
+  async updateProfile(req: { full_name: string; email: string }): Promise<User> {
+    return this.request<User>('/auth/profile', {
+      method: 'PATCH',
+      body: JSON.stringify(req),
+    });
+  }
+
+  async changePassword(req: { current_password: string; new_password: string }): Promise<void> {
+    await this.request<{ status: string }>('/auth/change-password', {
+      method: 'POST',
+      body: JSON.stringify(req),
+    });
   }
 
   // --- Document Endpoints (KF-13, KF-14) ---
@@ -282,8 +407,5 @@ export class ApiClient {
   }
 }
 
-// React context or hook helper for convenient usage
-export function createApiClient(getToken?: () => Promise<string | null>): ApiClient {
-  return new ApiClient({ getToken });
-}
-
+// Global shared client singleton
+export const apiClient = new ApiClient();

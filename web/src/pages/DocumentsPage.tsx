@@ -305,7 +305,7 @@ export function DocumentsPage() {
                 <th className="th-name">NAME</th>
                 <th className="th-status">STATUS</th>
                 <th className="th-size">SIZE</th>
-                <th className="th-chunks">CHUNKS</th>
+                <th className="th-chunks">SECTIONS</th>
                 <th className="th-date">UPLOADED</th>
                 <th className="th-actions"><span className="sr-only">Actions</span></th>
               </tr>
@@ -494,28 +494,28 @@ export function DocumentsPage() {
 
               {/* Explainer: From documents to answers */}
               <div className="explainer-card">
-                <span className="explainer-eyebrow">WHAT HAPPENS NEXT</span>
-                <h4 className="explainer-title">From documents to answers.</h4>
+                <span className="explainer-eyebrow">HOW IT WORKS</span>
+                <h4 className="explainer-title">From documents to clear answers</h4>
                 <div className="explainer-steps">
                   <div className="explainer-step">
                     <span className="step-num">1</span>
                     <div>
-                      <strong>Chunking & Structure</strong>
-                      <p>Markdown headers and paragraphs are segmented with sliding overlap.</p>
+                      <strong>Upload</strong>
+                      <p>Drop your guides, handbooks, policies, or notes here.</p>
                     </div>
                   </div>
                   <div className="explainer-step">
                     <span className="step-num">2</span>
                     <div>
-                      <strong>Dense Vector Embedding</strong>
-                      <p>768-dimensional embeddings generated with Google Gemini.</p>
+                      <strong>Index</strong>
+                      <p>KnowFlow organizes your content so every section is ready to search.</p>
                     </div>
                   </div>
                   <div className="explainer-step">
                     <span className="step-num">3</span>
                     <div>
-                      <strong>Grounded Citations</strong>
-                      <p>Ready for verifiable question answering with exact source citations.</p>
+                      <strong>Ask Questions</strong>
+                      <p>Ask in natural language and click citations to view source paragraphs.</p>
                     </div>
                   </div>
                 </div>
@@ -593,7 +593,7 @@ export function DocumentsPage() {
             <div className="modal-body">
               <p>
                 Are you sure you want to delete <strong>{deleteConfirmDoc.filename}</strong>?
-                This will remove all associated chunks and vector embeddings.
+                This document will be permanently removed from your workspace.
               </p>
             </div>
             <div className="modal-footer">

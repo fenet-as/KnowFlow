@@ -330,10 +330,9 @@ export function ChatPage() {
             <div className="empty-hero-icon">
               <Sparkles size={28} />
             </div>
-            <h3>Ask your knowledge base</h3>
+            <h3>Ask questions about your documents</h3>
             <p>
-              Type any question. KnowFlow uses dense vector retrieval and strict relevance gating
-              to cite source passages with zero hallucination.
+              Type any question. KnowFlow searches your uploaded documents and answers with direct references to the original text.
             </p>
             <div className="empty-quick-prompts">
               <span className="quick-prompts-label">SUGGESTED QUESTIONS</span>
@@ -389,7 +388,7 @@ export function ChatPage() {
                         {citations.length > 0 && (
                           <span className="badge-grounded">
                             <ShieldCheck size={12} />
-                            Grounded in {citations.length} source{citations.length > 1 ? 's' : ''}
+                            Verified from {citations.length} source{citations.length > 1 ? 's' : ''}
                           </span>
                         )}
                       </div>

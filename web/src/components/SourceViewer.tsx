@@ -38,8 +38,8 @@ export function SourceViewer({ citation, onClose, api }: SourceViewerProps) {
           setLoading(false);
           setError(
             err.status === 404
-              ? 'The source chunk or document no longer exists in your account.'
-              : 'Failed to load full chunk passage. Showing cached snippet instead.',
+              ? 'The source document or excerpt no longer exists in your account.'
+              : 'Failed to load full passage. Showing preview instead.',
           );
         }
       });
@@ -120,23 +120,19 @@ export function SourceViewer({ citation, onClose, api }: SourceViewerProps) {
           {/* Passage Metadata Card */}
           <div className="passage-metadata-box">
             <div className="metadata-row">
-              <span className="meta-label">Passage index:</span>
-              <span className="meta-value">
-                {chunk ? `Chunk ${chunk.chunk_index + 1}` : `Marker [${citation.marker}]`}
-              </span>
+              <span className="meta-label">Source file:</span>
+              <span className="meta-value">{citation.document_name}</span>
             </div>
             {citation.heading && (
               <div className="metadata-row">
-                <span className="meta-label">Section:</span>
+                <span className="meta-label">Section heading:</span>
                 <span className="meta-value">{citation.heading}</span>
               </div>
             )}
-            {chunk && (
-              <div className="metadata-row">
-                <span className="meta-label">Length:</span>
-                <span className="meta-value">{chunk.token_count} estimated tokens</span>
-              </div>
-            )}
+            <div className="metadata-row">
+              <span className="meta-label">Citation tag:</span>
+              <span className="meta-value">[{citation.marker}]</span>
+            </div>
           </div>
         </div>
 

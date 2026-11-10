@@ -13,8 +13,6 @@ import {
   EyeOff,
   Loader2,
   AlertCircle,
-  Copy,
-  CheckCheck,
 } from 'lucide-react';
 
 export function AccountPage() {
@@ -37,24 +35,12 @@ export function AccountPage() {
   const [savingPassword, setSavingPassword] = useState(false);
   const [passwordError, setPasswordError] = useState<string | null>(null);
 
-  // Copy ID State
-  const [copiedId, setCopiedId] = useState(false);
-
   useEffect(() => {
     if (user) {
       setFullName(user.full_name);
       setEmail(user.email);
     }
   }, [user]);
-
-  const handleCopyId = () => {
-    if (user?.id) {
-      navigator.clipboard.writeText(user.id);
-      setCopiedId(true);
-      setTimeout(() => setCopiedId(false), 2000);
-      toast.showToast('User ID copied to clipboard', 'info');
-    }
-  };
 
   const getInitials = (name?: string, userEmail?: string) => {
     if (name && name.trim()) {
@@ -202,25 +188,8 @@ export function AccountPage() {
               />
             </div>
 
-            <div className="account-read-only-section">
-              <div className="read-only-row">
-                <span className="read-only-label">
-                  <Key size={14} /> User ID
-                </span>
-                <div className="read-only-value-wrapper">
-                  <code className="user-id-code">{user?.id}</code>
-                  <button
-                    type="button"
-                    onClick={handleCopyId}
-                    className="copy-btn"
-                    title="Copy User ID"
-                  >
-                    {copiedId ? <CheckCheck size={14} /> : <Copy size={14} />}
-                  </button>
-                </div>
-              </div>
-
-              {user?.created_at && (
+            {user?.created_at && (
+              <div className="account-read-only-section">
                 <div className="read-only-row">
                   <span className="read-only-label">
                     <Clock size={14} /> Member Since
@@ -233,8 +202,8 @@ export function AccountPage() {
                     })}
                   </span>
                 </div>
-              )}
-            </div>
+              </div>
+            )}
 
             <button
               type="submit"

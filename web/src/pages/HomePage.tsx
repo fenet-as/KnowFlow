@@ -23,9 +23,9 @@ export function HomePage() {
   return (
     <div className="page-container">
       <div className="hero-section">
-        <h1>Transform Documents into Grounded Answers</h1>
+        <h1>Transform Documents into Clear Answers</h1>
         <p className="hero-subtitle">
-          Upload markdown and text handbooks, policies, and manuals. Ask questions with verifiable, citation-backed answers and persistent chat threads.
+          Upload handbooks, policies, and notes. Ask questions and get quick, accurate answers with direct links back to where they came from.
         </p>
 
         {isAuthenticated ? (
@@ -46,9 +46,9 @@ export function HomePage() {
           <div className="feature-icon">
             <FileUp size={24} />
           </div>
-          <h3>Document Ingestion (KF-31)</h3>
+          <h3>Upload Documents</h3>
           <p>
-            Secure upload of markdown and text documents with background chunking, embedding generation, and status tracking.
+            Add markdown and text documents to your workspace. We organize them so you can search them anytime.
           </p>
           <Link to="/documents" className="feature-link">
             Open Documents &rarr;
@@ -59,9 +59,9 @@ export function HomePage() {
           <div className="feature-icon">
             <MessageSquare size={24} />
           </div>
-          <h3>Conversational Ask (KF-32, KF-33)</h3>
+          <h3>Ask Questions</h3>
           <p>
-            Multi-turn chat threads powered by vector similarity search and grounded LLM answers with citation snapshots.
+            Have a natural conversation with your documents and see exactly which section each answer came from.
           </p>
           <Link to="/chat" className="feature-link">
             Start Chatting &rarr;
@@ -72,17 +72,17 @@ export function HomePage() {
           <div className="feature-icon">
             <ShieldCheck size={24} />
           </div>
-          <h3>Multi-Tenant & Resilient</h3>
+          <h3>Private & Secure</h3>
           <p>
-            Owner-scoped data isolation, token bucket rate limiting, and atomic transaction consistency.
+            Your documents belong only to your account. Everything stays private and protected.
           </p>
           <div className="system-status-indicator">
             {apiReady === null ? (
-              <span className="status-checking">Checking API readiness...</span>
+              <span className="status-checking">Checking system status...</span>
             ) : apiReady ? (
-              <span className="status-ready"><CheckCircle2 size={16} /> Backend Ready</span>
+              <span className="status-ready"><CheckCircle2 size={16} /> System Ready</span>
             ) : (
-              <span className="status-offline"><AlertCircle size={16} /> Backend Connecting...</span>
+              <span className="status-offline"><AlertCircle size={16} /> Connecting...</span>
             )}
           </div>
         </div>

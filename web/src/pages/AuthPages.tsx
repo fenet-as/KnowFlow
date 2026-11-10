@@ -68,19 +68,19 @@ export function SignInPage() {
               <div className="benefit-check">
                 <Check size={14} />
               </div>
-              <span>Owner-isolated retrieval on PostgreSQL pgvector</span>
+              <span>Answers based purely on your documents</span>
             </div>
             <div className="auth-benefit-item">
               <div className="benefit-check">
                 <Check size={14} />
               </div>
-              <span>Zero-hallucination relevance gating (τ = 0.65)</span>
+              <span>Clickable citations directly to the source text</span>
             </div>
             <div className="auth-benefit-item">
               <div className="benefit-check">
                 <Check size={14} />
               </div>
-              <span>Clickable passage inspection & multi-turn memory</span>
+              <span>Private workspace — your data is never shared</span>
             </div>
           </div>
         </div>
@@ -248,7 +248,7 @@ export function SignUpPage() {
             Join KnowFlow today.
           </h1>
           <p className="auth-hero-subtitle">
-            Transform static documentation into interactive, citation-backed intelligence with instant vector search.
+            Upload your files, ask questions naturally, and find exactly what you need in seconds.
           </p>
 
           <div className="auth-benefits-list">
@@ -256,19 +256,19 @@ export function SignUpPage() {
               <div className="benefit-check">
                 <Check size={14} />
               </div>
-              <span>Upload markdown & text documentation</span>
+              <span>Upload markdown & text documents easily</span>
             </div>
             <div className="auth-benefit-item">
               <div className="benefit-check">
                 <Check size={14} />
               </div>
-              <span>Semantic chunking with contextual headings</span>
+              <span>Ask questions in natural everyday language</span>
             </div>
             <div className="auth-benefit-item">
               <div className="benefit-check">
                 <Check size={14} />
               </div>
-              <span>Verifiable answers with clickable citations</span>
+              <span>Always see where every answer came from</span>
             </div>
           </div>
         </div>

@@ -12,10 +12,7 @@ import {
   Search,
   Plus,
   MessageSquare,
-  Lock,
   X,
-  ShieldCheck,
-  Check,
 } from 'lucide-react';
 import { DocumentItem, ApiError } from '../api/client';
 import { useApi } from '../api/useApi';
@@ -208,16 +205,12 @@ export function DocumentsPage() {
     <div className="figma-documents-view">
       {/* Top Workspace Header (matching Figma) */}
       <div className="workspace-hero">
-        <div className="workspace-badge">
-          <Lock size={12} />
-          <span>Private workspace</span>
-        </div>
         <h1 className="workspace-title">Your knowledge, in one place.</h1>
         <p className="workspace-subtitle">
           Add your documents. Find answers you can trace back to the source.
         </p>
 
-        {/* Action Buttons & Value Badges */}
+        {/* Action Buttons */}
         <div className="workspace-actions-row">
           <div className="action-buttons-group">
             <button
@@ -234,17 +227,6 @@ export function DocumentsPage() {
               <MessageSquare size={16} />
               <span>Ask your knowledge</span>
             </button>
-          </div>
-
-          <div className="value-badges-group">
-            <span className="value-badge">
-              <ShieldCheck size={13} />
-              GROUNDED ANSWERS
-            </span>
-            <span className="value-badge">
-              <Check size={13} />
-              CLICKABLE SOURCES
-            </span>
           </div>
         </div>
       </div>
@@ -305,7 +287,6 @@ export function DocumentsPage() {
                 <th className="th-name">NAME</th>
                 <th className="th-status">STATUS</th>
                 <th className="th-size">SIZE</th>
-                <th className="th-chunks">SECTIONS</th>
                 <th className="th-date">UPLOADED</th>
                 <th className="th-actions"><span className="sr-only">Actions</span></th>
               </tr>
@@ -319,7 +300,7 @@ export function DocumentsPage() {
                 </>
               ) : filteredDocuments.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="td-empty">
+                  <td colSpan={5} className="td-empty">
                     <div className="empty-state-box">
                       <FileText size={32} className="empty-icon" />
                       <h4>No documents found</h4>
@@ -391,14 +372,6 @@ export function DocumentsPage() {
                       </td>
 
                       <td className="td-size">{formatBytes(doc.size_bytes)}</td>
-
-                      <td className="td-chunks">
-                        {doc.chunk_count > 0 ? (
-                          <span className="chunk-badge">{doc.chunk_count}</span>
-                        ) : (
-                          <span className="text-muted">—</span>
-                        )}
-                      </td>
 
                       <td className="td-date">{formatDate(doc.created_at)}</td>
 
@@ -490,35 +463,6 @@ export function DocumentsPage() {
                 >
                   Choose files
                 </button>
-              </div>
-
-              {/* Explainer: From documents to answers */}
-              <div className="explainer-card">
-                <span className="explainer-eyebrow">HOW IT WORKS</span>
-                <h4 className="explainer-title">From documents to clear answers</h4>
-                <div className="explainer-steps">
-                  <div className="explainer-step">
-                    <span className="step-num">1</span>
-                    <div>
-                      <strong>Upload</strong>
-                      <p>Drop your guides, handbooks, policies, or notes here.</p>
-                    </div>
-                  </div>
-                  <div className="explainer-step">
-                    <span className="step-num">2</span>
-                    <div>
-                      <strong>Index</strong>
-                      <p>KnowFlow organizes your content so every section is ready to search.</p>
-                    </div>
-                  </div>
-                  <div className="explainer-step">
-                    <span className="step-num">3</span>
-                    <div>
-                      <strong>Ask Questions</strong>
-                      <p>Ask in natural language and click citations to view source paragraphs.</p>
-                    </div>
-                  </div>
-                </div>
               </div>
 
               {/* Live Upload Queue inside Modal */}

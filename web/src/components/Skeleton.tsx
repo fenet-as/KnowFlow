@@ -8,9 +8,6 @@ export function SkeletonRow() {
         <div className="skeleton-bar" style={{ width: '40%', height: '1rem' }} />
       </td>
       <td>
-        <div className="skeleton-bar" style={{ width: '50%', height: '1.25rem', borderRadius: '9999px' }} />
-      </td>
-      <td>
         <div className="skeleton-bar" style={{ width: '30%', height: '1rem' }} />
       </td>
       <td>

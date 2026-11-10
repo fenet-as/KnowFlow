@@ -4,7 +4,6 @@ import {
   Plus,
   FileText,
   MessageSquare,
-  Lock,
   Trash2,
   Sparkles,
   LogOut,
@@ -193,17 +192,6 @@ export function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarProps) {
               );
             })
           )}
-        </div>
-      </div>
-
-      {/* Privacy Box */}
-      <div className="sidebar-privacy-card">
-        <div className="privacy-card-icon">
-          <Lock size={14} />
-        </div>
-        <div className="privacy-card-text">
-          <strong>Just your knowledge.</strong>
-          <span>Your documents stay private.</span>
         </div>
       </div>
 

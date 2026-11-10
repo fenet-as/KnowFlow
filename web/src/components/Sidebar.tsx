@@ -210,16 +210,27 @@ export function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarProps) {
       {/* Bottom Profile / Account */}
       <div className="sidebar-footer">
         {isAuthenticated ? (
-          <div className="sidebar-user-profile">
-            <div className="sidebar-user-avatar-circle" title={user?.email}>
-              {getInitials(user?.full_name, user?.email)}
-            </div>
-            <div className="user-details">
-              <span className="user-name">
-                {user?.full_name || user?.email?.split('@')[0] || 'User'}
-              </span>
-              <span className="user-workspace">{user?.email || 'Personal workspace'}</span>
-            </div>
+          <div className={`sidebar-user-profile ${location.pathname === '/account' ? 'active' : ''}`}>
+            <button
+              type="button"
+              onClick={() => {
+                if (onCloseMobile) onCloseMobile();
+                navigate('/account');
+              }}
+              className="sidebar-user-info-btn"
+              title="Account settings"
+              aria-label="Account settings"
+            >
+              <div className="sidebar-user-avatar-circle" title={user?.email}>
+                {getInitials(user?.full_name, user?.email)}
+              </div>
+              <div className="user-details">
+                <span className="user-name">
+                  {user?.full_name || user?.email?.split('@')[0] || 'User'}
+                </span>
+                <span className="user-workspace">{user?.email || 'Personal workspace'}</span>
+              </div>
+            </button>
             <button
               onClick={handleLogout}
               className="btn-sidebar-logout"

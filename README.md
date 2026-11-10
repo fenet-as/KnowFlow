@@ -290,6 +290,31 @@ Revokes the active refresh token and clears the cookie.
 #### `GET /api/v1/auth/me` *(Protected)*
 Returns the authenticated caller's profile.
 
+#### `PATCH /api/v1/auth/profile` *(Protected)*
+Updates the authenticated user's full name and/or email address.
+- **Request Body:**
+  ```json
+  {
+    "full_name": "Jane Doe",
+    "email": "jane@example.com"
+  }
+  ```
+- **Response (200 OK):** User object.
+
+#### `POST /api/v1/auth/change-password` *(Protected)*
+Validates the current password and hashes/stores the new password (min 8 characters).
+- **Request Body:**
+  ```json
+  {
+    "current_password": "CurrentPassword123!",
+    "new_password": "NewSecretPassword123!"
+  }
+  ```
+- **Response (200 OK):**
+  ```json
+  { "status": "password_updated" }
+  ```
+
 ### 2. Health & System
 
 #### `GET /healthz`

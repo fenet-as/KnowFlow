@@ -17,6 +17,8 @@ type UserRepo interface {
 	CreateUser(ctx context.Context, user *domain.User) error
 	GetUserByEmail(ctx context.Context, email string) (*domain.User, error)
 	GetUserByID(ctx context.Context, id uuid.UUID) (*domain.User, error)
+	UpdateUser(ctx context.Context, user *domain.User) error
+	UpdatePassword(ctx context.Context, userID uuid.UUID, newPasswordHash string) error
 	SaveRefreshToken(ctx context.Context, token *domain.RefreshToken) error
 	GetRefreshToken(ctx context.Context, tokenHash string) (*domain.RefreshToken, error)
 	RevokeRefreshToken(ctx context.Context, tokenHash string) error
@@ -117,6 +119,47 @@ func (r *DefaultUserRepo) GetUserByID(ctx context.Context, id uuid.UUID) (*domai
 		return nil, domain.NewInternalError("failed to get user by ID", err)
 	}
 	return &u, nil
+}
+
+// UpdateUser updates a user's full name, email, and timestamp.
+func (r *DefaultUserRepo) UpdateUser(ctx context.Context, user *domain.User) error {
+	query := `
+		UPDATE users
+		SET email = $1, full_name = $2, updated_at = $3
+		WHERE id = $4
+	`
+	user.UpdatedAt = time.Now()
+	user.Email = strings.ToLower(strings.TrimSpace(user.Email))
+	user.FullName = strings.TrimSpace(user.FullName)
+
+	tag, err := r.pool.Exec(ctx, query, user.Email, user.FullName, user.UpdatedAt, user.ID)
+	if err != nil {
+		if strings.Contains(err.Error(), "users_email_key") || strings.Contains(err.Error(), "unique constraint") {
+			return domain.NewConflictError("an account with this email already exists")
+		}
+		return domain.NewInternalError("failed to update user profile", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.NewNotFoundError("user not found")
+	}
+	return nil
+}
+
+// UpdatePassword updates a user's password hash and timestamp.
+func (r *DefaultUserRepo) UpdatePassword(ctx context.Context, userID uuid.UUID, newPasswordHash string) error {
+	query := `
+		UPDATE users
+		SET password_hash = $1, updated_at = $2
+		WHERE id = $3
+	`
+	tag, err := r.pool.Exec(ctx, query, newPasswordHash, time.Now(), userID)
+	if err != nil {
+		return domain.NewInternalError("failed to update password", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.NewNotFoundError("user not found")
+	}
+	return nil
 }
 
 // SaveRefreshToken stores a new hashed refresh token.

@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { DocumentsPage } from './pages/DocumentsPage';
 import { ChatPage } from './pages/ChatPage';
+import { AccountPage } from './pages/AccountPage';
 import { SignInPage, SignUpPage } from './pages/AuthPages';
 import { ToastProvider } from './context/ToastContext';
 import { AuthProvider } from './context/AuthContext';
@@ -31,6 +32,7 @@ export default function App() {
               <Route path="ask" element={<ChatPage />} />
               <Route path="chat" element={<ChatPage />} />
               <Route path="chat/:conversationId" element={<ChatPage />} />
+              <Route path="account" element={<AccountPage />} />
               <Route path="*" element={<Navigate to="/documents" replace />} />
             </Route>
           </Routes>

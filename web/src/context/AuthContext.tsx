@@ -8,6 +8,8 @@ export interface AuthContextType {
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, fullName: string) => Promise<void>;
   logout: () => Promise<void>;
+  updateProfile: (fullName: string, email: string) => Promise<User>;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -62,6 +64,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const updateProfile = useCallback(async (fullName: string, email: string) => {
+    const updated = await apiClient.updateProfile({ full_name: fullName, email });
+    setUser(updated);
+    return updated;
+  }, []);
+
+  const changePassword = useCallback(async (currentPassword: string, newPassword: string) => {
+    await apiClient.changePassword({ current_password: currentPassword, new_password: newPassword });
+  }, []);
+
   return (
     <AuthContext.Provider
       value={{
@@ -71,6 +83,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         login,
         register,
         logout,
+        updateProfile,
+        changePassword,
       }}
     >
       {children}

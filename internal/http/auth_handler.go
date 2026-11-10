@@ -141,6 +141,63 @@ func (h *AuthHandler) GetMe(c *gin.Context) {
 	c.JSON(http.StatusOK, user)
 }
 
+// UpdateProfile updates the authenticated user's name or email.
+func (h *AuthHandler) UpdateProfile(c *gin.Context) {
+	ownerID := auth.GetOwnerID(c.Request.Context())
+	if ownerID == "" {
+		RespondWithError(c, domain.NewUnauthorizedError("Authentication required."))
+		return
+	}
+
+	uid, err := uuid.Parse(ownerID)
+	if err != nil {
+		RespondWithError(c, domain.NewUnauthorizedError("Invalid user identity."))
+		return
+	}
+
+	var req domain.UpdateProfileRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		RespondWithError(c, domain.NewValidationError("Invalid update profile request payload.", err))
+		return
+	}
+
+	user, err := h.authService.UpdateProfile(c.Request.Context(), uid, req)
+	if err != nil {
+		RespondWithError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, user)
+}
+
+// ChangePassword updates the authenticated user's password.
+func (h *AuthHandler) ChangePassword(c *gin.Context) {
+	ownerID := auth.GetOwnerID(c.Request.Context())
+	if ownerID == "" {
+		RespondWithError(c, domain.NewUnauthorizedError("Authentication required."))
+		return
+	}
+
+	uid, err := uuid.Parse(ownerID)
+	if err != nil {
+		RespondWithError(c, domain.NewUnauthorizedError("Invalid user identity."))
+		return
+	}
+
+	var req domain.ChangePasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		RespondWithError(c, domain.NewValidationError("Invalid change password request payload.", err))
+		return
+	}
+
+	if err := h.authService.ChangePassword(c.Request.Context(), uid, req); err != nil {
+		RespondWithError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "password_updated"})
+}
+
 func (h *AuthHandler) setRefreshTokenCookie(c *gin.Context, rawToken string, maxAge int) {
 	isSecure := c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https"
 	c.SetSameSite(http.SameSiteLaxMode)

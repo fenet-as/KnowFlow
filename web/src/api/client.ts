@@ -278,10 +278,23 @@ export class ApiClient {
   }
 
   async getMe(): Promise<User> {
-    const resp = await this.request<{ user: User }>('/auth/me', {
+    return this.request<User>('/auth/me', {
       method: 'GET',
     });
-    return resp.user;
+  }
+
+  async updateProfile(req: { full_name: string; email: string }): Promise<User> {
+    return this.request<User>('/auth/profile', {
+      method: 'PATCH',
+      body: JSON.stringify(req),
+    });
+  }
+
+  async changePassword(req: { current_password: string; new_password: string }): Promise<void> {
+    await this.request<{ status: string }>('/auth/change-password', {
+      method: 'POST',
+      body: JSON.stringify(req),
+    });
   }
 
   // --- Document Endpoints (KF-13, KF-14) ---

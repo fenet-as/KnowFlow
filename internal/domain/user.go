@@ -42,6 +42,18 @@ type LoginRequest struct {
 	Password string `json:"password" binding:"required"`
 }
 
+// UpdateProfileRequest holds profile update fields.
+type UpdateProfileRequest struct {
+	FullName string `json:"full_name" binding:"required,min=2"`
+	Email    string `json:"email" binding:"required,email"`
+}
+
+// ChangePasswordRequest holds password change payload.
+type ChangePasswordRequest struct {
+	CurrentPassword string `json:"current_password" binding:"required"`
+	NewPassword     string `json:"new_password" binding:"required,min=8"`
+}
+
 // AuthResponse holds access token and user profile returned to the frontend.
 type AuthResponse struct {
 	AccessToken string `json:"access_token"`

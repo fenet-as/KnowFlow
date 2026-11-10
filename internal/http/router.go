@@ -111,9 +111,11 @@ func NewRouter(opts RouterOptions) *gin.Engine {
 		apiV1.Use(auth.Middleware(verifier, RespondWithError))
 	}
 
-	// Current authenticated user profile
+	// Current authenticated user profile and account settings
 	if opts.AuthHandler != nil {
 		apiV1.GET("/auth/me", opts.AuthHandler.GetMe)
+		apiV1.PATCH("/auth/profile", opts.AuthHandler.UpdateProfile)
+		apiV1.POST("/auth/change-password", opts.AuthHandler.ChangePassword)
 	}
 	apiV1.GET("/me", func(c *gin.Context) {
 		ownerID := auth.GetOwnerID(c.Request.Context())

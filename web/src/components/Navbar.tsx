@@ -52,9 +52,9 @@ export function Navbar() {
         <div className="navbar-auth">
           {isAuthenticated ? (
             <div className="navbar-user-menu">
-              <div className="navbar-user-avatar" title={user?.email}>
+              <Link to="/account" className="navbar-user-avatar" title={`Account settings (${user?.email})`}>
                 {getInitials(user?.full_name, user?.email)}
-              </div>
+              </Link>
               <button
                 onClick={() => logout()}
                 className="btn-navbar-logout"

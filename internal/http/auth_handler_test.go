@@ -20,11 +20,25 @@ import (
 )
 
 type mockAuthService struct {
-	registerFn func(ctx context.Context, req domain.RegisterRequest, userAgent, ip string) (*domain.User, *domain.TokenPair, error)
-	loginFn    func(ctx context.Context, req domain.LoginRequest, userAgent, ip string) (*domain.User, *domain.TokenPair, error)
-	refreshFn  func(ctx context.Context, rawRefreshToken, userAgent, ip string) (*domain.User, *domain.TokenPair, error)
-	logoutFn   func(ctx context.Context, rawRefreshToken string) error
-	getMeFn    func(ctx context.Context, userID uuid.UUID) (*domain.User, error)
+	registerFn       func(ctx context.Context, req domain.RegisterRequest, userAgent, ip string) (*domain.User, *domain.TokenPair, error)
+	loginFn          func(ctx context.Context, req domain.LoginRequest, userAgent, ip string) (*domain.User, *domain.TokenPair, error)
+	refreshFn        func(ctx context.Context, rawRefreshToken, userAgent, ip string) (*domain.User, *domain.TokenPair, error)
+	logoutFn         func(ctx context.Context, rawRefreshToken string) error
+	getMeFn          func(ctx context.Context, userID uuid.UUID) (*domain.User, error)
+	updateProfileFn  func(ctx context.Context, userID uuid.UUID, req domain.UpdateProfileRequest) (*domain.User, error)
+	changePasswordFn func(ctx context.Context, userID uuid.UUID, req domain.ChangePasswordRequest) error
+}
+
+type mockVerifier struct {
+	ownerID string
+	err     error
+}
+
+func (m *mockVerifier) VerifyToken(tokenStr string) (string, error) {
+	if m.err != nil {
+		return "", m.err
+	}
+	return m.ownerID, nil
 }
 
 func (m *mockAuthService) Register(ctx context.Context, req domain.RegisterRequest, userAgent, ip string) (*domain.User, *domain.TokenPair, error) {
@@ -41,6 +55,18 @@ func (m *mockAuthService) Logout(ctx context.Context, rawRefreshToken string) er
 }
 func (m *mockAuthService) GetMe(ctx context.Context, userID uuid.UUID) (*domain.User, error) {
 	return m.getMeFn(ctx, userID)
+}
+func (m *mockAuthService) UpdateProfile(ctx context.Context, userID uuid.UUID, req domain.UpdateProfileRequest) (*domain.User, error) {
+	if m.updateProfileFn != nil {
+		return m.updateProfileFn(ctx, userID, req)
+	}
+	return nil, nil
+}
+func (m *mockAuthService) ChangePassword(ctx context.Context, userID uuid.UUID, req domain.ChangePasswordRequest) error {
+	if m.changePasswordFn != nil {
+		return m.changePasswordFn(ctx, userID, req)
+	}
+	return nil
 }
 
 func setupAuthRouter(svc *mockAuthService, verifier auth.TokenVerifier) *internalhttp.RouterOptions {
@@ -158,4 +184,75 @@ func TestAuthHandler_Logout(t *testing.T) {
 	assert.True(t, loggedOut)
 	// Cookie cleared
 	assert.Contains(t, w.Header().Get("Set-Cookie"), "Max-Age=0")
+}
+
+func TestAuthHandler_UpdateProfile(t *testing.T) {
+	testUserID := uuid.New()
+	verifier := &mockVerifier{ownerID: testUserID.String()}
+
+	mockSvc := &mockAuthService{
+		updateProfileFn: func(ctx context.Context, userID uuid.UUID, req domain.UpdateProfileRequest) (*domain.User, error) {
+			assert.Equal(t, testUserID, userID)
+			return &domain.User{
+				ID:        userID,
+				Email:     req.Email,
+				FullName:  req.FullName,
+				Role:      "member",
+				UpdatedAt: time.Now(),
+			}, nil
+		},
+	}
+
+	opts := setupAuthRouter(mockSvc, verifier)
+	r := internalhttp.NewRouter(*opts)
+
+	body, _ := json.Marshal(domain.UpdateProfileRequest{
+		FullName: "Updated Name",
+		Email:    "newemail@knowflow.dev",
+	})
+	req, _ := http.NewRequest(http.MethodPatch, "/api/v1/auth/profile", bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer valid-token")
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	r.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var user domain.User
+	err := json.Unmarshal(w.Body.Bytes(), &user)
+	require.NoError(t, err)
+	assert.Equal(t, "Updated Name", user.FullName)
+	assert.Equal(t, "newemail@knowflow.dev", user.Email)
+}
+
+func TestAuthHandler_ChangePassword(t *testing.T) {
+	testUserID := uuid.New()
+	verifier := &mockVerifier{ownerID: testUserID.String()}
+	called := false
+
+	mockSvc := &mockAuthService{
+		changePasswordFn: func(ctx context.Context, userID uuid.UUID, req domain.ChangePasswordRequest) error {
+			assert.Equal(t, testUserID, userID)
+			assert.Equal(t, "currentSecret123!", req.CurrentPassword)
+			assert.Equal(t, "newSecretPass123!", req.NewPassword)
+			called = true
+			return nil
+		},
+	}
+
+	opts := setupAuthRouter(mockSvc, verifier)
+	r := internalhttp.NewRouter(*opts)
+
+	body, _ := json.Marshal(domain.ChangePasswordRequest{
+		CurrentPassword: "currentSecret123!",
+		NewPassword:     "newSecretPass123!",
+	})
+	req, _ := http.NewRequest(http.MethodPost, "/api/v1/auth/change-password", bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer valid-token")
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	r.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.True(t, called)
 }

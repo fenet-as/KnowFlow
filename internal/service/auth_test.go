@@ -60,6 +60,20 @@ func (m *mockUserRepo) GetUserByID(ctx context.Context, id uuid.UUID) (*domain.U
 	return u, nil
 }
 
+func (m *mockUserRepo) UpdateUser(ctx context.Context, u *domain.User) error {
+	m.users[u.Email] = u
+	m.usersByID[u.ID] = u
+	return nil
+}
+
+func (m *mockUserRepo) UpdatePassword(ctx context.Context, userID uuid.UUID, newPasswordHash string) error {
+	if u, ok := m.usersByID[userID]; ok {
+		u.PasswordHash = newPasswordHash
+		return nil
+	}
+	return domain.NewNotFoundError("user not found")
+}
+
 func (m *mockUserRepo) SaveRefreshToken(ctx context.Context, token *domain.RefreshToken) error {
 	m.tokens[token.TokenHash] = token
 	return nil
@@ -190,4 +204,81 @@ func TestAuthService_Login_And_Refresh_Lifecycle(t *testing.T) {
 	// Refreshing after logout should fail
 	_, _, err = authSvc.Refresh(context.Background(), newTokens.RawRefreshToken, "agent", "ip")
 	assert.Error(t, err)
+}
+
+func TestAuthService_UpdateProfile(t *testing.T) {
+	repo := newMockUserRepo()
+	jwtMgr := auth.NewJWTManager("test-secret-key-that-is-at-least-32-bytes-long", 15*time.Minute, 7*24*time.Hour)
+	authSvc := service.NewAuthService(repo, jwtMgr)
+
+	user, _, err := authSvc.Register(context.Background(), domain.RegisterRequest{
+		Email:    "original@example.com",
+		Password: "password123",
+		FullName: "Original Name",
+	}, "agent", "ip")
+	require.NoError(t, err)
+
+	// Update name and email
+	updated, err := authSvc.UpdateProfile(context.Background(), user.ID, domain.UpdateProfileRequest{
+		FullName: "Updated Name",
+		Email:    "updated@example.com",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "Updated Name", updated.FullName)
+	assert.Equal(t, "updated@example.com", updated.Email)
+
+	// Validation: Invalid email
+	_, err = authSvc.UpdateProfile(context.Background(), user.ID, domain.UpdateProfileRequest{
+		FullName: "Name",
+		Email:    "not-an-email",
+	})
+	assert.Error(t, err)
+
+	// Validation: Name too short
+	_, err = authSvc.UpdateProfile(context.Background(), user.ID, domain.UpdateProfileRequest{
+		FullName: "A",
+		Email:    "updated@example.com",
+	})
+	assert.Error(t, err)
+}
+
+func TestAuthService_ChangePassword(t *testing.T) {
+	repo := newMockUserRepo()
+	jwtMgr := auth.NewJWTManager("test-secret-key-that-is-at-least-32-bytes-long", 15*time.Minute, 7*24*time.Hour)
+	authSvc := service.NewAuthService(repo, jwtMgr)
+
+	user, _, err := authSvc.Register(context.Background(), domain.RegisterRequest{
+		Email:    "pwdtest@example.com",
+		Password: "oldPassword123!",
+		FullName: "Password Test",
+	}, "agent", "ip")
+	require.NoError(t, err)
+
+	// Fail with wrong current password
+	err = authSvc.ChangePassword(context.Background(), user.ID, domain.ChangePasswordRequest{
+		CurrentPassword: "wrongPassword",
+		NewPassword:     "newPassword123!",
+	})
+	assert.Error(t, err)
+
+	// Fail with short new password
+	err = authSvc.ChangePassword(context.Background(), user.ID, domain.ChangePasswordRequest{
+		CurrentPassword: "oldPassword123!",
+		NewPassword:     "short",
+	})
+	assert.Error(t, err)
+
+	// Success
+	err = authSvc.ChangePassword(context.Background(), user.ID, domain.ChangePasswordRequest{
+		CurrentPassword: "oldPassword123!",
+		NewPassword:     "newPassword123!",
+	})
+	require.NoError(t, err)
+
+	// Can login with new password
+	_, _, err = authSvc.Login(context.Background(), domain.LoginRequest{
+		Email:    "pwdtest@example.com",
+		Password: "newPassword123!",
+	}, "agent", "ip")
+	require.NoError(t, err)
 }

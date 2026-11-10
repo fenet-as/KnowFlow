@@ -19,6 +19,8 @@ type AuthService interface {
 	Refresh(ctx context.Context, rawRefreshToken, userAgent, ip string) (*domain.User, *domain.TokenPair, error)
 	Logout(ctx context.Context, rawRefreshToken string) error
 	GetMe(ctx context.Context, userID uuid.UUID) (*domain.User, error)
+	UpdateProfile(ctx context.Context, userID uuid.UUID, req domain.UpdateProfileRequest) (*domain.User, error)
+	ChangePassword(ctx context.Context, userID uuid.UUID, req domain.ChangePasswordRequest) error
 }
 
 // DefaultAuthService implements AuthService.
@@ -164,6 +166,67 @@ func (s *DefaultAuthService) Logout(ctx context.Context, rawRefreshToken string)
 // GetMe retrieves the authenticated user's profile.
 func (s *DefaultAuthService) GetMe(ctx context.Context, userID uuid.UUID) (*domain.User, error) {
 	return s.userRepo.GetUserByID(ctx, userID)
+}
+
+// UpdateProfile updates the user's name and/or email address.
+func (s *DefaultAuthService) UpdateProfile(ctx context.Context, userID uuid.UUID, req domain.UpdateProfileRequest) (*domain.User, error) {
+	email := strings.ToLower(strings.TrimSpace(req.Email))
+	if _, err := mail.ParseAddress(email); err != nil {
+		return nil, domain.NewValidationError("Invalid email address format.", nil)
+	}
+
+	fullName := strings.TrimSpace(req.FullName)
+	if len(fullName) < 2 {
+		return nil, domain.NewValidationError("Full name must be at least 2 characters.", nil)
+	}
+
+	user, err := s.userRepo.GetUserByID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	// If email changed, check if new email is already registered by another user
+	if !strings.EqualFold(user.Email, email) {
+		existing, err := s.userRepo.GetUserByEmail(ctx, email)
+		if err == nil && existing != nil && existing.ID != userID {
+			return nil, domain.NewConflictError("an account with this email already exists")
+		}
+	}
+
+	user.Email = email
+	user.FullName = fullName
+	if err := s.userRepo.UpdateUser(ctx, user); err != nil {
+		return nil, err
+	}
+
+	return user, nil
+}
+
+// ChangePassword verifies the current password and hashes/stores the new password.
+func (s *DefaultAuthService) ChangePassword(ctx context.Context, userID uuid.UUID, req domain.ChangePasswordRequest) error {
+	if len(req.NewPassword) < 8 {
+		return domain.NewValidationError("New password must be at least 8 characters.", nil)
+	}
+
+	user, err := s.userRepo.GetUserByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+
+	if !auth.CheckPassword(req.CurrentPassword, user.PasswordHash) {
+		return domain.NewUnauthorizedError("Current password is incorrect.")
+	}
+
+	newHash, err := auth.HashPassword(req.NewPassword)
+	if err != nil {
+		return domain.NewInternalError("Failed to hash new password", err)
+	}
+
+	if err := s.userRepo.UpdatePassword(ctx, userID, newHash); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (s *DefaultAuthService) issueTokens(

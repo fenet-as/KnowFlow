@@ -474,9 +474,18 @@ export function ChatPage() {
               <div className="message-badge-header">
                 <span className="badge-assistant">KnowFlow</span>
               </div>
-              <div className="message-card assistant-card typing-card">
-                <Loader2 size={16} className="spinner text-emerald-800" />
-                <span>Searching documents and generating response...</span>
+              <div className="message-card assistant-card ai-thinking-card">
+                <div className="ai-thinking-content">
+                  <div className="ai-thinking-sparkle">
+                    <Sparkles size={15} />
+                  </div>
+                  <span className="ai-thinking-text">Searching documents & drafting answer</span>
+                  <div className="ai-wave-dots">
+                    <span className="wave-dot dot-1" />
+                    <span className="wave-dot dot-2" />
+                    <span className="wave-dot dot-3" />
+                  </div>
+                </div>
               </div>
             </div>
           </div>

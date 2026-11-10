@@ -12,6 +12,7 @@ import { Conversation, ApiError } from '../api/client';
 import { useApi } from '../api/useApi';
 import { useToast } from '../context/ToastContext';
 import { useAuth } from '../context/AuthContext';
+import { SkeletonSidebarItem } from './Skeleton';
 
 interface SidebarProps {
   mobileOpen?: boolean;
@@ -157,8 +158,9 @@ export function Sidebar({ mobileOpen = false, onCloseMobile }: SidebarProps) {
         <div className="sidebar-conversations-list">
           {loading ? (
             <div className="sidebar-loading-state">
-              <div className="skeleton-line" />
-              <div className="skeleton-line short" />
+              <SkeletonSidebarItem />
+              <SkeletonSidebarItem />
+              <SkeletonSidebarItem />
             </div>
           ) : conversations.length === 0 ? (
             <div className="sidebar-empty-conv">

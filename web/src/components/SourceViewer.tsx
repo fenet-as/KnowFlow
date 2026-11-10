@@ -95,8 +95,16 @@ export function SourceViewer({ citation, onClose, api }: SourceViewerProps) {
         <div className="figma-drawer-body">
           {loading && (
             <div className="drawer-loading-box">
-              <Loader2 className="spinner" size={24} />
-              <span>Retrieving source passage...</span>
+              <div className="drawer-skeleton-passage">
+                <div className="skeleton-bar" style={{ width: '45%', height: '1rem', marginBottom: '1rem' }} />
+                <div className="skeleton-bar" style={{ width: '100%', height: '0.875rem', marginBottom: '0.625rem' }} />
+                <div className="skeleton-bar" style={{ width: '92%', height: '0.875rem', marginBottom: '0.625rem' }} />
+                <div className="skeleton-bar" style={{ width: '78%', height: '0.875rem' }} />
+              </div>
+              <div className="drawer-loading-status">
+                <Loader2 className="spinner" size={15} />
+                <span>Loading source passage...</span>
+              </div>
             </div>
           )}
 

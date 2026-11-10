@@ -398,9 +398,6 @@ export function DocumentsPage() {
           <span>
             Showing {filteredDocuments.length} of {documents.length} documents
           </span>
-          <span className="footer-auto-updates">
-            Processing updates automatically
-          </span>
         </div>
       </div>
 

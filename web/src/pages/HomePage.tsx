@@ -1,90 +1,68 @@
-import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { FileUp, MessageSquare, ShieldCheck, CheckCircle2, AlertCircle } from 'lucide-react';
+import { UploadCloud, MessageSquare, Shield, ArrowRight } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 export function HomePage() {
-  const { isAuthenticated, user } = useAuth();
-  const [apiReady, setApiReady] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    const checkHealth = async () => {
-      try {
-        const baseUrl = (import.meta.env.VITE_API_BASE_URL || '/api/v1').replace(/\/api\/v1$/, '');
-        const res = await fetch(`${baseUrl}/readyz`);
-        setApiReady(res.ok);
-      } catch {
-        setApiReady(false);
-      }
-    };
-    checkHealth();
-  }, []);
+  const { isAuthenticated } = useAuth();
 
   return (
-    <div className="page-container">
-      <div className="hero-section">
-        <h1>Transform Documents into Clear Answers</h1>
-        <p className="hero-subtitle">
-          Upload handbooks, policies, and notes. Ask questions and get quick, accurate answers with direct links back to where they came from.
+    <div className="home-page-container">
+      <div className="home-hero">
+        <h1 className="home-hero-title">Every answer starts with your documents</h1>
+        <p className="home-hero-subtitle">
+          Upload your files and ask questions. Get clear answers with direct source citations.
         </p>
 
-        {isAuthenticated ? (
-          <div className="welcome-banner">
-            <p>Welcome back, <strong>{user?.full_name || user?.email || 'User'}</strong>!</p>
-          </div>
-        ) : (
-          <div className="cta-group">
-            <Link to="/sign-in" className="btn-primary-large">
-              Sign In to KnowFlow
+        <div className="home-cta-row">
+          {isAuthenticated ? (
+            <>
+              <Link to="/documents" className="btn-figma-primary">
+                <UploadCloud size={16} />
+                <span>Open Documents</span>
+              </Link>
+              <Link to="/chat" className="btn-figma-secondary">
+                <MessageSquare size={16} />
+                <span>Ask KnowFlow</span>
+              </Link>
+            </>
+          ) : (
+            <Link to="/sign-in" className="btn-figma-primary">
+              <span>Get Started</span>
+              <ArrowRight size={16} />
             </Link>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
-      <div className="feature-grid">
-        <div className="feature-card">
-          <div className="feature-icon">
-            <FileUp size={24} />
+      <div className="home-features-grid">
+        <div className="home-feature-card">
+          <div className="home-feature-icon">
+            <UploadCloud size={20} />
           </div>
-          <h3>Upload Documents</h3>
-          <p>
-            Add markdown and text documents to your workspace. We organize them so you can search them anytime.
-          </p>
-          <Link to="/documents" className="feature-link">
-            Open Documents &rarr;
+          <h3>Upload</h3>
+          <p>Add text and markdown files to your private workspace.</p>
+          <Link to="/documents" className="home-feature-link">
+            Documents <ArrowRight size={14} />
           </Link>
         </div>
 
-        <div className="feature-card">
-          <div className="feature-icon">
-            <MessageSquare size={24} />
+        <div className="home-feature-card">
+          <div className="home-feature-icon">
+            <MessageSquare size={20} />
           </div>
-          <h3>Ask Questions</h3>
-          <p>
-            Have a natural conversation with your documents and see exactly which section each answer came from.
-          </p>
-          <Link to="/chat" className="feature-link">
-            Start Chatting &rarr;
+          <h3>Ask</h3>
+          <p>Ask questions naturally and get answers grounded in your files.</p>
+          <Link to="/chat" className="home-feature-link">
+            Ask questions <ArrowRight size={14} />
           </Link>
         </div>
 
-        <div className="feature-card">
-          <div className="feature-icon">
-            <ShieldCheck size={24} />
+        <div className="home-feature-card">
+          <div className="home-feature-icon">
+            <Shield size={20} />
           </div>
-          <h3>Private & Secure</h3>
-          <p>
-            Your documents belong only to your account. Everything stays private and protected.
-          </p>
-          <div className="system-status-indicator">
-            {apiReady === null ? (
-              <span className="status-checking">Checking system status...</span>
-            ) : apiReady ? (
-              <span className="status-ready"><CheckCircle2 size={16} /> System Ready</span>
-            ) : (
-              <span className="status-offline"><AlertCircle size={16} /> Connecting...</span>
-            )}
-          </div>
+          <h3>Private</h3>
+          <p>Your documents stay in your workspace and are never shared.</p>
         </div>
       </div>
     </div>

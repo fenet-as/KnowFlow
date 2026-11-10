@@ -59,8 +59,7 @@ export function SignInPage() {
             Every answer starts with your documents.
           </h1>
           <p className="auth-hero-subtitle">
-            Upload handbooks, engineering standards, and policies. Ask complex questions
-            and get precise answers with clickable citations back to the source text.
+            Upload files, ask questions, and get instant answers with verified source citations.
           </p>
 
           <div className="auth-benefits-list">
@@ -68,19 +67,19 @@ export function SignInPage() {
               <div className="benefit-check">
                 <Check size={14} />
               </div>
-              <span>Answers based purely on your documents</span>
+              <span>Answers directly from your documents</span>
             </div>
             <div className="auth-benefit-item">
               <div className="benefit-check">
                 <Check size={14} />
               </div>
-              <span>Clickable citations directly to the source text</span>
+              <span>Clickable citations to the source text</span>
             </div>
             <div className="auth-benefit-item">
               <div className="benefit-check">
                 <Check size={14} />
               </div>
-              <span>Private workspace — your data is never shared</span>
+              <span>Private workspace for your files</span>
             </div>
           </div>
         </div>
@@ -248,7 +247,7 @@ export function SignUpPage() {
             Join KnowFlow today.
           </h1>
           <p className="auth-hero-subtitle">
-            Upload your files, ask questions naturally, and find exactly what you need in seconds.
+            Upload files, ask questions, and get clear answers in seconds.
           </p>
 
           <div className="auth-benefits-list">
@@ -256,19 +255,19 @@ export function SignUpPage() {
               <div className="benefit-check">
                 <Check size={14} />
               </div>
-              <span>Upload markdown & text documents easily</span>
+              <span>Upload documents easily</span>
             </div>
             <div className="auth-benefit-item">
               <div className="benefit-check">
                 <Check size={14} />
               </div>
-              <span>Ask questions in natural everyday language</span>
+              <span>Ask questions naturally</span>
             </div>
             <div className="auth-benefit-item">
               <div className="benefit-check">
                 <Check size={14} />
               </div>
-              <span>Always see where every answer came from</span>
+              <span>Every answer cited to the source</span>
             </div>
           </div>
         </div>

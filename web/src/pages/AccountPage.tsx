@@ -5,7 +5,6 @@ import { ApiError } from '../api/client';
 import {
   User as UserIcon,
   Lock,
-  Shield,
   Clock,
   Key,
   Check,
@@ -143,10 +142,6 @@ export function AccountPage() {
             </div>
             <div className="account-profile-meta">
               <div className="account-profile-name">{user?.full_name || 'User'}</div>
-              <div className="account-profile-role">
-                <span className="role-badge">{user?.role || 'member'}</span>
-                <span className="workspace-label">Personal Workspace</span>
-              </div>
             </div>
           </div>
 
@@ -234,14 +229,6 @@ export function AccountPage() {
             <div>
               <h2 className="card-title">Security & Password</h2>
               <p className="card-subtitle">Change your password to keep your account safe</p>
-            </div>
-          </div>
-
-          <div className="security-notice-box">
-            <Shield size={16} className="security-icon" />
-            <div className="security-text">
-              <strong>Secure Password Policy</strong>
-              <span>Must be at least 8 characters with a mix of letters and numbers.</span>
             </div>
           </div>
 
